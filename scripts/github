@@ -1,0 +1,23 @@
+# Show which branch we are actively working on 
+parse_git_branch() {
+  git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/ (\1)/'
+}
+export PS1="\u@\h \W\[\033[32m\]\$(parse_git_branch)\[\033[00m\] $ "
+
+# Common aliases
+alias gs='git status'
+alias gst='git stash'
+alias gph='git push origin'
+alias gp='git pull'
+alias gf='git fetch'
+alias grh='git reset --hard'
+alias grs='git reset --soft'
+alias gch='git checkout'
+alias gcb='git checkout -b'
+alias gbv='git branch -v'
+alias gbd='git branch -D'
+alias gcm='git commit -m'
+alias grb='git rebase -i'
+
+# Add hub to git 
+eval $(hub alias -s)
