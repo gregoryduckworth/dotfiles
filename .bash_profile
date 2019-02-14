@@ -3,4 +3,4 @@ for file in ~/scripts/*; do
   source $file
 done
 
-alias sbash='source ~/.bashrc'
+alias sbash='source ~/.bash_profile'

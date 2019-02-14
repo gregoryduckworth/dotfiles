@@ -61,13 +61,13 @@ echo "Setting to dark mode..."
 sudo npm i -g macdarkmode
 darkmode true
 
-echo "Creating .bashrc file..."
+echo "Creating .bash_profile file..."
 cp -R scripts ~/
-cp .bashrc ~/.bashrc
+cp .bash_profile ~/.bash_profile
 
-echo "Sourcing .bashrc..."
-. ~/.bashrc
-exec bash
+echo "Sourcing .bash_profile..."
+. ~/.bash_profile
+exec bash_profile
 
 echo "Configuring OSX..."
 

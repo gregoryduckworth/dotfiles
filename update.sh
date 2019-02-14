@@ -1,11 +1,11 @@
-read -p "Do you want to update your scripts and .bashrc? [n/Y]" choice
+read -p "Do you want to update your scripts and .bash_profile? [n/Y]" choice
 choice=${choice:-y}
 if [[ $choice =~ ^[Yy]$ ]]; then
-  echo "Creating .bashrc file..."
+  echo "Creating .bash_profile file..."
   cp -R scripts ~/
-  cp .bashrc ~/.bashrc
+  cp .bash_profile ~/.bash_profile
 fi
 
-echo "Sourcing .bashrc..."
-. ~/.bashrc
+echo "Sourcing .bash_profile..."
+. ~/.bash_profile
 exec bash
