@@ -16,8 +16,6 @@ PACKAGES=(
     git
     hub
     rbenv
-    tree
-    vim
 )
 
 echo "Installing packages..."
