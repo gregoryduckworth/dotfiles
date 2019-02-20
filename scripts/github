@@ -21,6 +21,7 @@ alias gbv='git branch -v'
 alias gbd='git branch -D'
 alias gcm='git commit -m'
 alias grb='git rebase -i'
+alias gcl='git clone'
 
 # Add hub to git 
 eval $(hub alias -s)
