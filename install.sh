@@ -59,6 +59,16 @@ echo "Setting to dark mode..."
 sudo npm i -g macdarkmode
 darkmode true
 
+echo "Checking Python version..."
+python --version
+
+echo "Installing pip..."
+curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+sudo ython get-pip.py
+
+echo "Install virtualenv..."
+sudo pip install virtualenv
+
 echo "Creating .bash_profile file..."
 cp -R scripts ~/
 cp .bash_profile ~/.bash_profile
