@@ -30,6 +30,7 @@ CASKS=(
     dropbox
     google-chrome
     iterm2
+    java
     skype
     slack
     sublime-text
