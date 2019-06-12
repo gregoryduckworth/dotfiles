@@ -22,7 +22,7 @@ alias gbd='git branch -D'
 alias gcm='git commit -m'
 alias grb='git rebase -i'
 alias gcl='git clone'
-alias gbp='git fetch --all && git checkout'
+alias gpb='git fetch --all && git checkout'
 
 # Add hub to git 
 eval $(hub alias -s)
