@@ -34,8 +34,8 @@ CASKS=(
     skype
     slack
     sublime-text
-    vlc
     visual-studio-code
+    vlc
 )
 
 echo "Installing cask apps..."
