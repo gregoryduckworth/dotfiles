@@ -16,6 +16,8 @@ PACKAGES=(
     git
     hub
     rbenv
+    python
+    pyenv
 )
 
 echo "Installing packages..."
@@ -66,7 +68,7 @@ python --version
 
 echo "Installing pip..."
 curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-sudo ython get-pip.py
+sudo python get-pip.py
 
 echo "Install virtualenv..."
 sudo pip install virtualenv
