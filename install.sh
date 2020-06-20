@@ -35,9 +35,7 @@ CASKS=(
     java
     skype
     slack
-    sublime-text
     visual-studio-code
-    vlc
 )
 
 echo "Installing cask apps..."
