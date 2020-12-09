@@ -1,0 +1,7 @@
+alias dr='docker run --rm -it $(docker build -q .)'d
+alias drs='docker stop $(docker ps -a -q)'
+alias drd='docker rm $(docker ps -a -q)'
+alias drp='docker system prune'
+
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1

@@ -50,9 +50,9 @@ RUBY_GEMS=(
 sudo gem install ${RUBY_GEMS[@]}
 
 NODE_PACKAGES=(
-  node
-  npm
-  nvm
+    node
+    npm
+    nvm
 )
 echo "Installing Node packages..."
 brew install ${NODE_PACKAGES[@]}
