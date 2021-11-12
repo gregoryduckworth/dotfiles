@@ -14,7 +14,7 @@ brew update
 # Packages to install with Brew
 PACKAGES=(
     git
-    hub
+    gh
     rbenv
     python
     pyenv

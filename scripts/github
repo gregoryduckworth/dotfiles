@@ -26,5 +26,4 @@ alias grs='git reset --soft'
 alias gs='git status'
 alias gst='git stash'
 
-# Add hub to git 
-eval $(hub alias -s)
+alias ghpr='gh pr status'
