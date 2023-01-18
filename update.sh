@@ -1,11 +1,14 @@
-read -p "Do you want to update your scripts and .bash_profile? [n/Y]" choice
+#! /usr/bin/env bash
+
+PROFILE=zprofile
+
+read -p "Do you want to update your scripts and .$PROFILE? [n/Y]" choice
 choice=${choice:-y}
 if [[ $choice =~ ^[Yy]$ ]]; then
-  echo "Creating .bash_profile file..."
-  cp -R scripts ~/
-  cp .bash_profile ~/.bash_profile
+  echo "Creating .$PROFILE file..."
+  sudo cp -R scripts ~/
+  sudo cp .$PROFILE ~/.$PROFILE
 fi
 
-echo "Sourcing .bash_profile..."
-. ~/.bash_profile
-exec bash
+echo "Sourcing .$PROFILE..."
+. ~/.$PROFILE
