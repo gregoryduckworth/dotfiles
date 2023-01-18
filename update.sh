@@ -1,6 +1,6 @@
 #! /usr/bin/env bash
 
-PROFILE=zprofile
+PROFILE=zshrc
 
 read -p "Do you want to update your scripts and .$PROFILE? [n/Y]" choice
 choice=${choice:-y}
@@ -11,4 +11,5 @@ if [[ $choice =~ ^[Yy]$ ]]; then
 fi
 
 echo "Sourcing .$PROFILE..."
-. ~/.$PROFILE
+source ~/.$PROFILE
+exec /bin/zsh

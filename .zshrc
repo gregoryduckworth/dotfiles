@@ -3,4 +3,4 @@ for file in ~/scripts/*; do
   source $file
 done
 
-alias sbash='source ~/.zprofile'
+alias sz='source ~/.zprofile'

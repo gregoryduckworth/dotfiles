@@ -51,6 +51,7 @@ source_profile() {
 
   echo "Sourcing .$1..."
   source ~/.$1
+  exec ~/.$1
 }
 
 install_check() {
@@ -147,7 +148,7 @@ install_check "packages"
 install_check "ruby"
 install_check "python"
 install_check "node"
-source_profile "zprofile"
+source_profile "zshrc"
 configure_osx
 homebrew_cleanup
 echo "Bootstrapping Complete!"
