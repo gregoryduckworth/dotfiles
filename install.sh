@@ -1,100 +1,153 @@
-#!/usr/bin/env bash
+#! /usr/bin/env bash
 
-echo "Starting Bootstrapping..."
-
-# Check for Homebrew, install if we don't have it
-if test ! $(which brew); then
+homebrew_install() {
+  # Check for Homebrew, install if we don't have it
+  if test ! $(which brew); then
     echo "Installing homebrew..."
     ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
-fi
+  fi
+  
+  # Update homebrew recipes
+  brew update
+}
 
-# Update homebrew recipes
-brew update
+# Clean up brew
+homebrew_cleanup() {
+  echo "Cleaning up..."
+  brew cleanup
+}
 
-# Packages to install with Brew
-PACKAGES=(
+# General Brew Install
+brew_install() {
+  echo "Installing packages..."
+  for package in $@; do
+    if ! brew info $package &>/dev/null; then
+      echo "Installing $package..."
+      brew install $package
+    else
+       echo "$package is already installed..."
+    fi
+  done
+}
+
+# General Brew Install
+brew_cask_install() {
+  echo "Installing casks..."
+  for cask in $@; do
+    if ! brew info $cask &>/dev/null; then
+      echo "Installing $cask..."
+      brew install $cask --cask
+    else
+       echo "$cask is already installed..."
+    fi
+  done
+}
+
+# Create and source the file
+source_profile() {
+  echo "Creating .$1 file..."
+  sudo cp -R scripts ~/
+  sudo cp .$1 ~/.$1
+
+  echo "Sourcing .$1..."
+  source ~/.$1
+}
+
+install_check() {
+  echo "Do you wish to install $1 dependencies?"
+  select yn in "Yes" "No"; do
+      case $yn in
+          Yes ) $1_install; break;;
+          No ) break;;
+      esac
+  done
+}
+
+## ---------- General Packages ---------- ##
+packages_install() {
+  PACKAGES=(
     git
     gh
-    rbenv
-    python
-    pyenv
-)
-
-echo "Installing packages..."
-brew install ${PACKAGES[@]}
-
-echo "Cleaning up..."
-brew cleanup
-
-# Apps to install with Brew
-CASKS=(
-    docker
-    dropbox
+  )
+  brew_install "" "${PACKAGES[@]}"
+  CASKS=(
     google-chrome
     iterm2
-    java
-    skype
     slack
     visual-studio-code
-)
+  )
+  brew_cask_install "${CASKS[@]}"
+}
 
-echo "Installing cask apps..."
-brew cask install ${CASKS[@]}
-
-# Packages to install with Brew
-echo "Installing Ruby gems..."
-RUBY_GEMS=(
+## ---------- Ruby Dependencies ---------- ##
+ruby_install() {
+  # Packages to install with Brew
+  PACKAGES=(
+      rbenv
+  )
+  brew_install "${PACKAGES[@]}"
+  RUBY_GEMS=(
     bundler
-)
+  )
+  echo "Installing Ruby gems..."
+  sudo gem install ${RUBY_GEMS[@]}
+}
 
-sudo gem install ${RUBY_GEMS[@]}
+## ---------- Python Dependencies -------- ##
+python_install() {
+  PACKAGES=(
+    python
+    pyenv
+  )
+  brew_install "${PACKAGES[@]}"
+  echo "Checking Python version..."
+  python --version
+  echo "Installing pip..."
+  curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+  sudo python get-pip.py
+  echo "Install virtualenv..."
+  sudo pip install virtualenv
+}
 
-NODE_PACKAGES=(
+## ---------- Node Dependencies ---------- ##
+node_install() {
+  PACKAGES=(
     node
     npm
     nvm
-)
-echo "Installing Node packages..."
-brew install ${NODE_PACKAGES[@]}
+  )
+  brew_install ${PACKAGES[@]}
+}
 
-echo "Setting to dark mode..."
-sudo npm i -g macdarkmode
-darkmode true
+# Basic OSX configurations
+configure_osx() {
+  echo "Configuring OSX..."
 
-echo "Checking Python version..."
-python --version
+  # Set fast key repeat rate
+  defaults write NSGlobalDomain KeyRepeat -int 2
 
-echo "Installing pip..."
-curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-sudo python get-pip.py
+  # Require password as soon as screensaver or sleep mode starts
+  defaults write com.apple.screensaver askForPassword -int 1
+  defaults write com.apple.screensaver askForPasswordDelay -int 0
 
-echo "Install virtualenv..."
-sudo pip install virtualenv
+  # Show filename extensions by default
+  defaults write NSGlobalDomain AppleShowAllExtensions -bool true
 
-echo "Creating .bash_profile file..."
-cp -R scripts ~/
-cp .bash_profile ~/.bash_profile
+  # Show battery percentage
+  defaults write com.apple.menuextra.battery ShowPercent -string "YES"
 
-echo "Sourcing .bash_profile..."
-. ~/.bash_profile
-exec bash_profile
+  # Clear all command history
+  history -c
+}
 
-echo "Configuring OSX..."
-
-# Set fast key repeat rate
-defaults write NSGlobalDomain KeyRepeat -int 2
-
-# Require password as soon as screensaver or sleep mode starts
-defaults write com.apple.screensaver askForPassword -int 1
-defaults write com.apple.screensaver askForPasswordDelay -int 0
-
-# Show filename extensions by default
-defaults write NSGlobalDomain AppleShowAllExtensions -bool true
-
-# Show battery percentage
-defaults write com.apple.menuextra.battery ShowPercent -string "YES"
-
-# Clear all command history
-history -c
-
+# Actual script
+echo "Starting Bootstrapping..."
+homebrew_install
+install_check "packages"
+install_check "ruby"
+install_check "python"
+install_check "node"
+source_profile "zprofile"
+configure_osx
+homebrew_cleanup
 echo "Bootstrapping Complete!"
