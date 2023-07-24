@@ -1,17 +1,17 @@
-#! /usr/bin/env bash
+#!/usr/bin/env bash
 
 homebrew_install() {
   # Check for Homebrew, install if we don't have it
-  if test ! $(which brew); then
-    echo "Installing homebrew..."
-    ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+  if ! command -v brew &>/dev/null; then
+    echo "Installing Homebrew..."
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   fi
-  
-  # Update homebrew recipes
+
+  # Update Homebrew recipes
   brew update
 }
 
-# Clean up brew
+# Clean up Homebrew
 homebrew_cleanup() {
   echo "Cleaning up..."
   brew cleanup
@@ -20,25 +20,12 @@ homebrew_cleanup() {
 # General Brew Install
 brew_install() {
   echo "Installing packages..."
-  for package in $@; do
-    if ! brew info $package &>/dev/null; then
+  for package in "$@"; do
+    if ! brew info "$package" &>/dev/null; then
       echo "Installing $package..."
-      brew install $package
+      brew install "$package"
     else
-       echo "$package is already installed..."
-    fi
-  done
-}
-
-# General Brew Install
-brew_cask_install() {
-  echo "Installing casks..."
-  for cask in $@; do
-    if ! brew info $cask &>/dev/null; then
-      echo "Installing $cask..."
-      brew install $cask --cask
-    else
-       echo "$cask is already installed..."
+      echo "$package is already installed..."
     fi
   done
 }
@@ -46,8 +33,8 @@ brew_cask_install() {
 # Create and source the file
 source_profile() {
   echo "Creating .$1 file..."
-  sudo cp -R scripts ~/
-  sudo cp .$1 ~/.$1
+  cp -R scripts ~/
+  cp .$1 ~/.$1
 
   echo "Sourcing .$1..."
   source ~/.$1
@@ -57,10 +44,10 @@ source_profile() {
 install_check() {
   echo "Do you wish to install $1 dependencies?"
   select yn in "Yes" "No"; do
-      case $yn in
-          Yes ) $1_install; break;;
-          No ) break;;
-      esac
+    case $yn in
+      Yes) $1_install; break ;;
+      No) break ;;
+    esac
   done
 }
 
@@ -70,28 +57,28 @@ packages_install() {
     git
     gh
   )
-  brew_install "" "${PACKAGES[@]}"
+  brew_install "${PACKAGES[@]}"
   CASKS=(
     google-chrome
     iterm2
     slack
     visual-studio-code
   )
-  brew_cask_install "${CASKS[@]}"
+  brew_install "${CASKS[@]}"
 }
 
 ## ---------- Ruby Dependencies ---------- ##
 ruby_install() {
   # Packages to install with Brew
   PACKAGES=(
-      rbenv
+    rbenv
   )
   brew_install "${PACKAGES[@]}"
   RUBY_GEMS=(
     bundler
   )
   echo "Installing Ruby gems..."
-  sudo gem install ${RUBY_GEMS[@]}
+  gem install "${RUBY_GEMS[@]}"
 }
 
 ## ---------- Python Dependencies -------- ##
@@ -117,7 +104,7 @@ node_install() {
     npm
     nvm
   )
-  brew_install ${PACKAGES[@]}
+  brew_install "${PACKAGES[@]}"
 }
 
 # Basic OSX configurations
