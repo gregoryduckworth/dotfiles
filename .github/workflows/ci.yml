@@ -1,0 +1,31 @@
+name: Test with Homebrew
+
+on:
+  push:
+
+jobs:
+  test:
+    runs-on: macOS-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Homebrew
+        run: |
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          brew update
+
+      - name: Install bash dependencies
+        run: |
+          # Add any dependencies needed for your bash script here
+          # For example, if your script uses 'zip' command:
+          # brew install zip
+
+      - name: Run the script
+        run: |
+          chmod +x install.sh
+          ./install.sh
+
+      - name: Clean up Homebrew
+        run: brew cleanup
