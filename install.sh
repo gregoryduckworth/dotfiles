@@ -137,6 +137,9 @@ configure_osx() {
   # Show battery percentage
   defaults write com.apple.menuextra.battery ShowPercent -string "YES"
 
+  # Stop the bouncing icons
+  defaults write com.apple.dock no-bouncing -bool true
+
   # Clear all command history
   history -c
 }
