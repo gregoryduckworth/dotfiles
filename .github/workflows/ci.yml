@@ -1,0 +1,31 @@
+name: Test with Homebrew
+
+on:
+  push:
+
+jobs:
+  test:
+    runs-on: macOS-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify Homebrew
+        run: |
+          # Homebrew is already installed on GitHub Actions runners
+          brew update
+
+      - name: Install bash dependencies
+        run: |
+          # Add any dependencies needed for your bash script here
+          # For example, if your script uses 'zip' command:
+          # brew install zip
+
+      - name: Validate script syntax
+        run: |
+          chmod +x install.sh
+          bash -n install.sh
+
+      - name: Clean up Homebrew
+        run: brew cleanup

@@ -1,17 +1,27 @@
-#! /usr/bin/env bash
+#!/usr/bin/env bash
+set -euo pipefail
 
 homebrew_install() {
   # Check for Homebrew, install if we don't have it
-  if test ! $(which brew); then
-    echo "Installing homebrew..."
-    ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+  if ! command -v brew &>/dev/null; then
+    echo "Installing Homebrew..."
+    if ! /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; then
+      echo "Error: Homebrew installation failed"
+      return 1
+    fi
+    # Add Homebrew to PATH
+    if [[ -f "/opt/homebrew/bin/brew" ]]; then
+      eval "$(/opt/homebrew/bin/brew shellenv)"
+    elif [[ -f "/usr/local/bin/brew" ]]; then
+      eval "$(/usr/local/bin/brew shellenv)"
+    fi
   fi
-  
-  # Update homebrew recipes
+
+  # Update Homebrew recipes
   brew update
 }
 
-# Clean up brew
+# Clean up Homebrew
 homebrew_cleanup() {
   echo "Cleaning up..."
   brew cleanup
@@ -19,26 +29,28 @@ homebrew_cleanup() {
 
 # General Brew Install
 brew_install() {
+  local install_type=""
+  if [[ "$1" == "--cask" ]]; then
+    install_type="--cask"
+    shift
+  fi
+  
   echo "Installing packages..."
-  for package in $@; do
-    if ! brew info $package &>/dev/null; then
-      echo "Installing $package..."
-      brew install $package
+  for package in "$@"; do
+    if [[ -n "$install_type" ]]; then
+      if ! brew list --cask "$package" &>/dev/null; then
+        echo "Installing $package..."
+        brew install --cask "$package"
+      else
+        echo "$package is already installed..."
+      fi
     else
-       echo "$package is already installed..."
-    fi
-  done
-}
-
-# General Brew Install
-brew_cask_install() {
-  echo "Installing casks..."
-  for cask in $@; do
-    if ! brew info $cask &>/dev/null; then
-      echo "Installing $cask..."
-      brew install $cask --cask
-    else
-       echo "$cask is already installed..."
+      if ! brew list --formula "$package" &>/dev/null; then
+        echo "Installing $package..."
+        brew install "$package"
+      else
+        echo "$package is already installed..."
+      fi
     fi
   done
 }
@@ -46,21 +58,38 @@ brew_cask_install() {
 # Create and source the file
 source_profile() {
   echo "Creating .$1 file..."
-  sudo cp -R scripts ~/
-  sudo cp .$1 ~/.$1
+  
+  # Check if source files exist
+  if [[ ! -f ".$1" ]]; then
+    echo "Error: .$1 not found"
+    return 1
+  fi
+  
+  if [[ ! -d "scripts" ]]; then
+    echo "Error: scripts directory not found"
+    return 1
+  fi
+  
+  cp -R scripts ~/
+  cp ".$1" ~/."$1"
 
   echo "Sourcing .$1..."
-  source ~/.$1
-  exec ~/.$1
+  source ~/."$1"
 }
 
 install_check() {
+  # Non-interactive mode for CI
+  if [[ -n "${CI:-}" ]]; then
+    echo "Running in CI mode, skipping $1 dependencies..."
+    return 0
+  fi
+  
   echo "Do you wish to install $1 dependencies?"
   select yn in "Yes" "No"; do
-      case $yn in
-          Yes ) $1_install; break;;
-          No ) break;;
-      esac
+    case $yn in
+      Yes) eval "${1}_install"; break ;;
+      No) break ;;
+    esac
   done
 }
 
@@ -70,28 +99,28 @@ packages_install() {
     git
     gh
   )
-  brew_install "" "${PACKAGES[@]}"
+  brew_install "${PACKAGES[@]}"
   CASKS=(
     google-chrome
     iterm2
     slack
     visual-studio-code
   )
-  brew_cask_install "${CASKS[@]}"
+  brew_install --cask "${CASKS[@]}"
 }
 
 ## ---------- Ruby Dependencies ---------- ##
 ruby_install() {
   # Packages to install with Brew
   PACKAGES=(
-      rbenv
+    rbenv
   )
   brew_install "${PACKAGES[@]}"
   RUBY_GEMS=(
     bundler
   )
   echo "Installing Ruby gems..."
-  sudo gem install ${RUBY_GEMS[@]}
+  gem install "${RUBY_GEMS[@]}"
 }
 
 ## ---------- Python Dependencies -------- ##
@@ -104,10 +133,13 @@ python_install() {
   echo "Checking Python version..."
   python --version
   echo "Installing pip..."
-  curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-  sudo python get-pip.py
+  if ! curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py; then
+    echo "Failed to download pip installer"
+    return 1
+  fi
+  python get-pip.py --user
   echo "Install virtualenv..."
-  sudo pip install virtualenv
+  pip install --user virtualenv
 }
 
 ## ---------- Node Dependencies ---------- ##
@@ -117,7 +149,7 @@ node_install() {
     npm
     nvm
   )
-  brew_install ${PACKAGES[@]}
+  brew_install "${PACKAGES[@]}"
 }
 
 # Basic OSX configurations
