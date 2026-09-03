@@ -1,1 +1,6 @@
-export PATH="/usr/local/opt/curl/bin:$PATH"
+# Add Homebrew curl to PATH (supports both Intel and Apple Silicon)
+if [[ -d "/opt/homebrew/opt/curl/bin" ]]; then
+  export PATH="/opt/homebrew/opt/curl/bin:$PATH"
+elif [[ -d "/usr/local/opt/curl/bin" ]]; then
+  export PATH="/usr/local/opt/curl/bin:$PATH"
+fi
