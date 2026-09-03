@@ -131,15 +131,12 @@ python_install() {
   )
   brew_install "${PACKAGES[@]}"
   echo "Checking Python version..."
-  python --version
-  echo "Installing pip..."
-  if ! curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py; then
-    echo "Failed to download pip installer"
-    return 1
-  fi
-  python get-pip.py --user
+  python3 --version
+  # pip is included with Python 3.4+, so we just need to ensure it's up to date
+  echo "Ensuring pip is up to date..."
+  python3 -m pip install --upgrade pip --user
   echo "Install virtualenv..."
-  pip install --user virtualenv
+  python3 -m pip install --user virtualenv
 }
 
 ## ---------- Node Dependencies ---------- ##
@@ -152,9 +149,9 @@ node_install() {
   brew_install "${PACKAGES[@]}"
 }
 
-# Basic OSX configurations
-configure_osx() {
-  echo "Configuring OSX..."
+# Basic macOS configurations
+configure_macos() {
+  echo "Configuring macOS..."
 
   # Set fast key repeat rate
   defaults write NSGlobalDomain KeyRepeat -int 2
@@ -166,8 +163,8 @@ configure_osx() {
   # Show filename extensions by default
   defaults write NSGlobalDomain AppleShowAllExtensions -bool true
 
-  # Show battery percentage
-  defaults write com.apple.menuextra.battery ShowPercent -string "YES"
+  # Show battery percentage (note: this may not work on macOS Ventura+ due to Control Center changes)
+  defaults write com.apple.menuextra.battery ShowPercent -string "YES" 2>/dev/null || true
 
   # Stop the bouncing icons
   defaults write com.apple.dock no-bouncing -bool true
@@ -184,6 +181,6 @@ install_check "ruby"
 install_check "python"
 install_check "node"
 source_profile "zshrc"
-configure_osx
+configure_macos
 homebrew_cleanup
 echo "Bootstrapping Complete!"
