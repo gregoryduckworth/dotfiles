@@ -1,4 +1,6 @@
 # Setup some basic Browserstack credentials and the default location for Chrome
 export BROWSERSTACK_USERNAME=
 export BROWSERSTACK_ACCESS_KEY=
-export CHROME="/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome"
+# Quoted, so the space needs no backslash: with one, $CHROME held a literal
+# backslash and every "$CHROME" invocation failed.
+export CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Resolve everything against the checkout rather than the caller's working
+# directory, so `~/somewhere/dotfiles/install.sh` works from anywhere.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 homebrew_install() {
   # Check for Homebrew, install if we don't have it
   if ! command -v brew &>/dev/null; then
@@ -60,29 +64,30 @@ source_profile() {
   echo "Creating .$1 file..."
   
   # Check if source files exist
-  if [[ ! -f ".$1" ]]; then
+  if [[ ! -f "$SCRIPT_DIR/.$1" ]]; then
     echo "Error: .$1 not found"
     return 1
   fi
-  
-  if [[ ! -d "scripts" ]]; then
+
+  if [[ ! -d "$SCRIPT_DIR/scripts" ]]; then
     echo "Error: scripts directory not found"
     return 1
   fi
-  
-  cp -R scripts ~/
-  cp ".$1" ~/."$1"
 
   # This script runs under bash, so sourcing the zsh profile here would both
   # fail on zsh-only builtins and be thrown away when the script exits.
   # Parse it instead, and let the user pick the profile up in a new shell.
+  # Checked before copying so a broken profile never lands in $HOME.
   if command -v zsh &>/dev/null; then
     echo "Validating .$1..."
-    if ! zsh -n ~/."$1"; then
-      echo "Error: ~/.$1 is not valid zsh"
+    if ! zsh -n "$SCRIPT_DIR/.$1"; then
+      echo "Error: .$1 is not valid zsh"
       return 1
     fi
   fi
+
+  cp -R "$SCRIPT_DIR/scripts" "$HOME/"
+  cp "$SCRIPT_DIR/.$1" "$HOME/.$1"
 
   echo "Run 'exec zsh' or open a new terminal to load .$1"
 }
@@ -184,13 +189,21 @@ configure_macos() {
 }
 
 # Actual script
-echo "Starting Bootstrapping..."
-homebrew_install
-install_check "packages"
-install_check "ruby"
-install_check "python"
-install_check "node"
-source_profile "zshrc"
-configure_macos
-homebrew_cleanup
-echo "Bootstrapping Complete!"
+main() {
+  echo "Starting Bootstrapping..."
+  homebrew_install
+  install_check "packages"
+  install_check "ruby"
+  install_check "python"
+  install_check "node"
+  source_profile "zshrc"
+  configure_macos
+  homebrew_cleanup
+  echo "Bootstrapping Complete!"
+}
+
+# Only bootstrap when executed. Sourcing the file just defines the functions,
+# which is how tests/install_test.sh exercises them.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
