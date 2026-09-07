@@ -250,6 +250,154 @@ test_configure_macos_does_not_touch_shell_history() {
   assert_not_contains "$(cat "$REPO_ROOT/install.sh")" "history -c"
 }
 
+## ---------- version resolution ---------- ##
+
+# A version manager whose `install --list` looks like the real thing: sorted
+# oldest first, with prereleases and alternative implementations mixed in.
+stub_version_manager() {
+  # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
+  stub "$1" '
+    case "$1 $2" in
+      "install --list")
+        printf "  %s\n" 2.7.18 3.2.6 3.3.6 3.4.0-preview1 jruby-9.4.9.0 ;;
+      "root ") echo "$HOME/.$(basename "$0")" ;;
+    esac
+    exit 0'
+}
+
+test_latest_stable_version_picks_the_newest_release() {
+  stub_version_manager demoenv
+
+  # Not the prerelease that sorts after it, and not the alternative runtime.
+  assert_eq "3.3.6" "$(latest_stable_version demoenv)"
+}
+
+test_version_to_install_prefers_a_pinned_version() {
+  stub_version_manager demoenv
+
+  assert_eq "3.2.2" "$(version_to_install demoenv 3.2.2)"
+  assert_eq "" "$(stub_calls demoenv)" "a pinned version still asked for the list"
+}
+
+test_version_to_install_fails_when_the_list_is_empty() {
+  stub demoenv 'exit 0'
+
+  assert_failure version_to_install demoenv ""
+}
+
+## ---------- ruby_install / python_install ---------- ##
+
+# shim <dir> <name>: an executable outside $STUB_BIN that records its calls
+# under "shim-<name>", so a test can tell the version manager's shim apart from
+# the system command of the same name.
+shim() {
+  local dir="$1" name="$2"
+  mkdir -p "$dir"
+  {
+    echo '#!/usr/bin/env bash'
+    printf 'printf "%%s\\n" "$*" >>%q\n' "$STUB_CALLS/shim-$name"
+    echo 'exit 0'
+  } >"$dir/$name"
+  chmod +x "$dir/$name"
+}
+
+# rbenv plus a shimmed gem, and a system gem that fails the way the real one
+# does when it is asked to write into a root-owned Ruby.
+stub_ruby_env() {
+  stub_brew_missing
+  stub_version_manager rbenv
+  shim "$HOME/.rbenv/shims" gem
+  stub gem 'echo "system gem: permission denied" >&2; exit 1'
+}
+
+# pyenv plus a shimmed python3, and a system python3 that refuses the way
+# Homebrew's does.
+stub_python_env() {
+  stub_brew_missing
+  stub_version_manager pyenv
+  shim "$HOME/.pyenv/shims" python3
+  stub python3 'echo "error: externally-managed-environment" >&2; exit 1'
+}
+
+test_ruby_install_installs_a_ruby_before_any_gem() {
+  stub_ruby_env
+  ruby_install >/dev/null
+
+  assert_stub_called brew "install rbenv"
+  assert_stub_called rbenv "install --skip-existing 3.3.6"
+  assert_stub_called rbenv "global 3.3.6"
+  assert_stub_called shim-gem "install bundler"
+  # New executables are only reachable once rbenv has written their shims.
+  assert_stub_called rbenv "rehash"
+}
+
+test_ruby_install_never_uses_the_system_gem() {
+  stub_ruby_env
+  ruby_install >/dev/null
+
+  assert_stub_not_called gem "install bundler"
+}
+
+test_ruby_install_honours_a_pinned_version() {
+  stub_ruby_env
+  DOTFILES_RUBY_VERSION=3.2.2 ruby_install >/dev/null
+
+  assert_stub_called rbenv "install --skip-existing 3.2.2"
+  assert_stub_called rbenv "global 3.2.2"
+}
+
+test_ruby_install_stops_when_no_version_can_be_resolved() {
+  stub_brew_missing
+  # A manager whose list is empty, so no version can be resolved.
+  # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
+  stub rbenv 'case "$1 $2" in "root ") echo "$HOME/.rbenv" ;; esac; exit 0'
+  shim "$HOME/.rbenv/shims" gem
+
+  assert_failure ruby_install
+  assert_missing "$STUB_CALLS/shim-gem"
+}
+
+test_python_install_installs_a_python_before_any_pip() {
+  stub_python_env
+  python_install >/dev/null
+
+  assert_stub_called brew "install pyenv"
+  assert_stub_called pyenv "install --skip-existing 3.3.6"
+  assert_stub_called pyenv "global 3.3.6"
+  assert_stub_called shim-python3 "-m pip install --upgrade pip"
+  assert_stub_called shim-python3 "-m pip install virtualenv"
+}
+
+test_python_install_never_uses_the_system_python() {
+  stub_python_env
+  python_install >/dev/null
+
+  # Homebrew's python3 refuses both of these: --user is unsupported, and pip
+  # reports an externally-managed-environment.
+  assert_eq "" "$(stub_calls python3)" "python_install used the system python3"
+  assert_stub_not_called brew "install python"
+  assert_not_contains "$(stub_calls shim-python3)" "--user"
+}
+
+test_python_install_honours_a_pinned_version() {
+  stub_python_env
+  DOTFILES_PYTHON_VERSION=3.12.7 python_install >/dev/null
+
+  assert_stub_called pyenv "install --skip-existing 3.12.7"
+  assert_stub_called pyenv "global 3.12.7"
+}
+
+test_python_install_stops_when_no_version_can_be_resolved() {
+  stub_brew_missing
+  # A manager whose list is empty, so no version can be resolved.
+  # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
+  stub pyenv 'case "$1 $2" in "root ") echo "$HOME/.pyenv" ;; esac; exit 0'
+  shim "$HOME/.pyenv/shims" python3
+
+  assert_failure python_install
+  assert_missing "$STUB_CALLS/shim-python3"
+}
+
 ## ---------- main guard ---------- ##
 
 test_sourcing_install_sh_does_not_bootstrap() {

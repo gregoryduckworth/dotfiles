@@ -1,0 +1,6 @@
+# Python
+export PATH="$HOME/.pyenv/bin:$PATH"
+# --no-rehash keeps shell startup quick, and keeps the rehash - which fails
+# when no version is installed yet - from aborting a profile sourced under
+# errexit.
+if which pyenv > /dev/null; then eval "$(pyenv init --no-rehash - zsh)"; fi
