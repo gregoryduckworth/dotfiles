@@ -42,7 +42,20 @@ assert_file() {
 }
 
 assert_missing() {
-  [[ ! -e "$1" ]] || fail "expected nothing at $1"
+  # -L as well as -e, so a dangling symlink counts as something being there.
+  [[ ! -e "$1" && ! -L "$1" ]] || fail "expected nothing at $1"
+}
+
+# assert_symlink <path> [target]
+#
+# Asserts <path> is a symlink, and when [target] is given, that it points there.
+assert_symlink() {
+  local actual
+  [[ -L "$1" ]] || fail "expected a symlink at $1"
+  if [[ $# -ge 2 ]]; then
+    actual="$(readlink "$1")"
+    [[ "$actual" == "$2" ]] || fail "expected $1 -> $2, got $1 -> $actual"
+  fi
 }
 
 # Runs a command with errexit suspended and asserts it exited non-zero.

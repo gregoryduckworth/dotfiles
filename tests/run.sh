@@ -16,8 +16,8 @@ for file in *_test.sh; do
   printf '%s\n' "$output"
 
   # A test file that exits before printing its summary has not reported
-  # anything: install.sh and update.sh both end in a call that would replace or
-  # abort the process if their "only run when executed" guard regressed.
+  # anything: install.sh ends in a call that would abort the process if its
+  # "only run when executed" guard regressed.
   if ! printf '%s\n' "$output" | grep -q "^$file: [0-9]* run,"; then
     echo "$file exited without reporting a summary" >&2
     status=1

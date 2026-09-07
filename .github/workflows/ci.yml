@@ -28,7 +28,7 @@ jobs:
           sudo apt-get install -y shellcheck
 
       - name: Shellcheck bash scripts
-        run: shellcheck -x install.sh update.sh tests/*.sh tests/helpers/*.sh
+        run: shellcheck -x install.sh tests/*.sh tests/helpers/*.sh
 
       # Pinned by version and checksum so a formatting run never changes
       # underneath us and turns a green lint job red on an unrelated PR.
@@ -45,11 +45,11 @@ jobs:
           shfmt --version
 
       - name: Check bash formatting
-        run: shfmt -d -i 2 -ci install.sh update.sh tests/*.sh tests/helpers/*.sh
+        run: shfmt -d -i 2 -ci install.sh tests/*.sh tests/helpers/*.sh
 
       - name: Check bash syntax
         run: |
-          for file in install.sh update.sh tests/*.sh tests/helpers/*.sh; do
+          for file in install.sh tests/*.sh tests/helpers/*.sh; do
             echo "bash -n $file"
             bash -n "$file"
           done
@@ -73,7 +73,7 @@ jobs:
           sudo apt-get install -y zsh
 
       # The suite parses every zsh script, sources the profile in a throwaway
-      # $HOME, and exercises install.sh and update.sh against stub commands.
+      # $HOME, and exercises install.sh against stub commands.
       - name: Run tests
         run: ./tests/run.sh
 
@@ -92,8 +92,22 @@ jobs:
           # CI is set by GitHub Actions, which puts install.sh in
           # non-interactive mode and skips the optional dependency prompts.
           HOME="$sandbox" ./install.sh
+          # Re-run it: installing over the links left by the first run must
+          # repoint them, not nest a second link inside the checkout.
+          HOME="$sandbox" ./install.sh
 
       - name: Verify installed files
         run: |
+          # install.sh links into the checkout, so these must be symlinks
+          # pointing at this working copy rather than copies of it.
+          for link in scripts .zshrc; do
+            target="$(readlink "$HOME_SANDBOX/$link")" ||
+              { echo "~/$link is not a symlink"; exit 1; }
+            [ "$target" = "$PWD/$link" ] ||
+              { echo "~/$link -> $target, expected $PWD/$link"; exit 1; }
+          done
+          [ ! -e "$HOME_SANDBOX/scripts/scripts" ] ||
+            { echo "a re-run nested a link inside scripts/"; exit 1; }
+          # diff follows the symlinks it is handed, so this compares contents.
           diff -r scripts "$HOME_SANDBOX/scripts"
           diff .zshrc "$HOME_SANDBOX/.zshrc"

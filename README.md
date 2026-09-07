@@ -10,11 +10,25 @@ Install script for useful items
 ./install.sh             # bootstrap a machine
 ./install.sh --dry-run   # print what it would do, and do none of it
 ./install.sh --help      # usage
-./update.sh              # re-copy scripts/ and .zshrc into $HOME
 ```
 
-Both scripts resolve paths against the checkout, so they can be run from
-anywhere, and both are safe to re-run.
+`install.sh` resolves paths against the checkout, so it can be run from
+anywhere, and it is safe to re-run.
+
+It does not copy anything into `$HOME`; it symlinks:
+
+```
+~/.zshrc  -> <checkout>/.zshrc
+~/scripts -> <checkout>/scripts
+```
+
+So updating is just a `git pull` in the checkout - there is no second copy to
+re-install or to go stale, and editing a script in `~/scripts` is the same thing
+as editing it in the checkout.
+
+If a real `~/.zshrc` or `~/scripts` is already there, it is moved aside to
+`~/.zshrc.backup-<timestamp>` rather than clobbered. Links from an earlier
+install are simply repointed.
 
 `install.sh` prompts for each group of optional dependencies (packages, ruby,
 python, node); set `CI` to a non-empty value to decline all of them without
@@ -84,9 +98,9 @@ export BROWSERSTACK_ACCESS_KEY=your-access-key
 EOF
 ```
 
-The file lives in `$HOME` and is never copied, overwritten or removed by
-`install.sh` or `update.sh`, and `.gitignore` covers it so a copy made inside
-the checkout cannot be committed by a stray `gaa` (`git add .`).
+The file lives in `$HOME`, outside the checkout, and `install.sh` never touches
+it: only `~/.zshrc` and `~/scripts` are linked. `.gitignore` covers it so a copy
+made inside the checkout cannot be committed by a stray `gaa` (`git add .`).
 
 ## Tests
 
@@ -102,8 +116,7 @@ the real machine or run a real `brew`, `defaults` or `sudo`.
 
 | File | Covers |
 | --- | --- |
-| `tests/install_test.sh` | `install.sh` functions: brew installs, the CI/interactive prompt, profile installation and its failure paths, macOS defaults |
-| `tests/update_test.sh` | `update.sh`: the prompt's answers and the copy into `$HOME` |
+| `tests/install_test.sh` | `install.sh` functions: brew installs, the CI/interactive prompt, the symlinks into `$HOME` and their backup and failure paths, macOS defaults |
 | `tests/profile_test.sh` | `.zshrc`: loading `scripts/`, sourcing `~/.zshrc.local` last, and coping with a missing or empty `~/scripts` |
 | `tests/scripts_test.sh` | each file in `scripts/`: parses, exits cleanly, and defines the expected aliases, exports and functions |
 
@@ -118,4 +131,5 @@ Every push to `main` and every pull request runs `.github/workflows/ci.yml`:
   tests.
 - **Tests** (Ubuntu and macOS) - `./tests/run.sh`.
 - **Run install.sh** (macOS) - runs `install.sh` end to end against a throwaway
-  `$HOME` and diffs the installed files against the repo.
+  `$HOME`, twice, then checks the installed paths are symlinks into the checkout
+  and diffs them against the repo.

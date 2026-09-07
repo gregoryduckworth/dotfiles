@@ -3,10 +3,19 @@
 # child zsh so the bash test process is never affected.
 
 # Installs the repo's profile and scripts into the sandbox $HOME, the same way
-# install.sh does.
+# install.sh does: as symlinks into a checkout.
+#
+# The checkout is a throwaway copy rather than $REPO_ROOT itself, so a test that
+# drops a file into ~/scripts writes through the symlink into the copy instead
+# of into the real repo.
 install_profile_into_home() {
-  cp -R "$REPO_ROOT/scripts" "$HOME/"
-  cp "$REPO_ROOT/.zshrc" "$HOME/.zshrc"
+  local checkout="$TEST_TMP/checkout"
+  mkdir -p "$checkout"
+  cp -R "$REPO_ROOT/scripts" "$checkout/"
+  cp "$REPO_ROOT/.zshrc" "$checkout/.zshrc"
+
+  ln -sfn "$checkout/scripts" "$HOME/scripts"
+  ln -sfn "$checkout/.zshrc" "$HOME/.zshrc"
 }
 
 # zsh_profile [code]: sources ~/.zshrc under `set -e` and then runs [code]. The
