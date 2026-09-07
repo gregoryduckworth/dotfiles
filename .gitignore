@@ -1,0 +1,7 @@
+# Machine-specific settings and secrets. The real file lives at ~/.zshrc.local
+# and is sourced last by .zshrc; ignoring it here keeps a copy made inside the
+# checkout from ever being committed.
+.zshrc.local
+
+# macOS
+.DS_Store

@@ -148,6 +148,15 @@ test_source_profile_removes_nothing_the_user_owns() {
   assert_file "$HOME/scripts/local"
 }
 
+test_source_profile_keeps_the_local_override() {
+  # ~/.zshrc.local holds machine-specific settings and secrets, so an install
+  # must never overwrite or remove it.
+  echo 'export SECRET=mine' >"$HOME/.zshrc.local"
+  source_profile zshrc >/dev/null
+
+  assert_eq "export SECRET=mine" "$(cat "$HOME/.zshrc.local")"
+}
+
 # Copies install.sh into a checkout-shaped directory so the failure paths can be
 # exercised without touching the real repo. Sets FAKE_CHECKOUT; the caller
 # populates it and then re-sources install.sh from there, which repoints
