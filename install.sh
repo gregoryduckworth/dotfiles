@@ -184,8 +184,16 @@ configure_macos() {
   # Stop the bouncing icons
   defaults write com.apple.dock no-bouncing -bool true
 
-  # Clear all command history
-  history -c
+  # The writes above only land when the app that owns the preference restarts,
+  # so the Dock and Finder changes would otherwise appear not to have worked.
+  # Skipped in CI, where there is nothing running to restart, and never allowed
+  # to fail the bootstrap: killall exits non-zero when an app is not running.
+  if [[ -n "${CI:-}" ]]; then
+    echo "Running in CI mode, skipping app restarts..."
+  else
+    echo "Restarting Dock, Finder and SystemUIServer to apply the settings..."
+    killall Dock Finder SystemUIServer 2>/dev/null || true
+  fi
 }
 
 # Actual script
