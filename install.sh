@@ -116,6 +116,9 @@ packages_install() {
   PACKAGES=(
     git
     gh
+    # Sourced by scripts/zsh-plugins, which skips them when they are missing.
+    zsh-autosuggestions
+    zsh-syntax-highlighting
   )
   brew_install "${PACKAGES[@]}"
   CASKS=(

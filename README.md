@@ -25,10 +25,31 @@ DOTFILES_RUBY_VERSION=3.3.6 DOTFILES_PYTHON_VERSION=3.12.7 ./install.sh
 
 ## Scripts
 
-Every file in `scripts/` is sourced by `.zshrc` on shell startup.
+Every file in `scripts/` is sourced by `.zshrc` on shell startup, in glob
+order, so the filenames decide the order.
 
-### Github
-This sets up a few aliases, hub and adds the branch to the terminal output
+| File | What it sets up |
+| --- | --- |
+| `browserstack` | BrowserStack credentials and the path to Chrome |
+| `completion` | `compinit`, case-insensitive matching, arrow-key menu selection |
+| `docker` | Docker aliases and BuildKit |
+| `editor` | `$EDITOR` and `$VISUAL` |
+| `git` | The prompt, including the current branch |
+| `github` | `git` and `gh` aliases |
+| `history` | A 50k-line shared history that dedupes |
+| `homebrew` | Homebrew's curl on `$PATH` |
+| `navigation` | `AUTO_CD` and the directory stack |
+| `nvm` | nvm and its completion |
+| `rbenv` | rbenv and its shims |
+| `zsh-plugins` | `zsh-autosuggestions` and `zsh-syntax-highlighting`, when installed |
+
+Two of the filenames are load-bearing, and `tests/profile_test.sh` guards both:
+`completion` has to sort before `nvm`, whose completion is loaded on top of
+`compinit`, and `zsh-plugins` has to sort last, because
+`zsh-syntax-highlighting` needs to see the widgets everything else defines.
+
+The plugins in `zsh-plugins` are optional - `install.sh` installs them with the
+general packages, and a shell without them starts normally.
 
 ### Browserstack
 Points `$CHROME` at the macOS Chrome binary and exports

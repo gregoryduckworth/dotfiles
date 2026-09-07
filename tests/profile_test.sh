@@ -23,6 +23,55 @@ test_profile_loads_every_script() {
   assert_eq "0" "$(zsh_profile 'whence -w parse_git_branch >/dev/null; echo $?')" "scripts/git"
   assert_contains "$(zsh_profile 'echo $CHROME')" "Google" "scripts/browserstack"
   assert_contains "$(zsh_profile 'echo $NVM_DIR')" ".nvm" "scripts/nvm"
+  assert_contains "$(zsh_profile 'echo $HISTFILE')" ".zsh_history" "scripts/history"
+  assert_eq "compdef: function" "$(zsh_profile 'whence -w compdef')" "scripts/completion"
+  assert_eq "0" "$(zsh_profile '[[ -n $EDITOR ]]; echo $?')" "scripts/editor"
+  assert_eq "on" "$(zsh_profile 'echo $options[autocd]')" "scripts/navigation"
+}
+
+# The order ~/scripts is sourced in, one filename per line. .zshrc uses a plain
+# glob, so this is the same order a new shell gets.
+sourced_order() {
+  zsh -c 'for file in ~/scripts/*(N); do echo ${file:t}; done'
+}
+
+test_completion_is_sourced_before_nvm() {
+  skip_unless_command zsh
+  install_profile_into_home
+  local order
+  order="$(sourced_order)"
+
+  # nvm's bash_completion is loaded on top of the completion system, so
+  # compinit has to have run by the time scripts/nvm is sourced. Nothing but
+  # the filenames enforces that, hence this test.
+  local completion nvm
+  completion="$(printf '%s\n' "$order" | grep -n '^completion$' | cut -d: -f1)"
+  nvm="$(printf '%s\n' "$order" | grep -n '^nvm$' | cut -d: -f1)"
+
+  [[ -n "$completion" && -n "$nvm" ]] ||
+    fail "expected both completion and nvm in ~/scripts, got: $order"
+  [[ "$completion" -lt "$nvm" ]] ||
+    fail "scripts/completion is sourced after scripts/nvm: $order"
+}
+
+test_the_plugins_are_sourced_last() {
+  skip_unless_command zsh
+  install_profile_into_home
+
+  # zsh-syntax-highlighting has to be sourced after everything that defines a
+  # ZLE widget, so its file has to sort to the end of ~/scripts.
+  assert_eq "zsh-plugins" "$(sourced_order | tail -n 1)"
+}
+
+test_profile_is_quiet() {
+  skip_unless_command zsh
+  install_profile_into_home
+  local errors
+
+  # A new terminal that opens with a warning on it is the thing everybody
+  # learns to ignore. compinit is the usual culprit.
+  errors="$(zsh_profile 2>&1 >/dev/null)" || fail ".zshrc failed"
+  assert_eq "" "$errors" ".zshrc wrote to stderr"
 }
 
 test_profile_survives_a_missing_scripts_directory() {

@@ -1,0 +1,32 @@
+# zsh-autosuggestions and zsh-syntax-highlighting, both Homebrew formulae and
+# both optional: a machine without them gets a plain shell rather than an error
+# on every prompt.
+#
+# The filename sorts last in ~/scripts on purpose. zsh-syntax-highlighting
+# highlights by wrapping ZLE widgets, and its install notes are explicit that
+# it has to be sourced at the end of .zshrc so that it sees the widgets
+# everything else defines - zsh-autosuggestions below included.
+
+# brew shellenv exports HOMEBREW_PREFIX; fall back to probing the two standard
+# prefixes, the same way scripts/homebrew does, rather than shelling out to
+# `brew --prefix` on every shell startup.
+if [[ -n "${HOMEBREW_PREFIX:-}" ]]; then
+  zsh_plugin_dir="$HOMEBREW_PREFIX/share"
+elif [[ -d /opt/homebrew/share ]]; then
+  zsh_plugin_dir=/opt/homebrew/share
+else
+  zsh_plugin_dir=/usr/local/share
+fi
+
+# Suggests the rest of the line from history as you type; right-arrow accepts.
+if [[ -r "$zsh_plugin_dir/zsh-autosuggestions/zsh-autosuggestions.zsh" ]]; then
+  source "$zsh_plugin_dir/zsh-autosuggestions/zsh-autosuggestions.zsh"
+fi
+
+# Colours the command line as you type, so a typo in a command name is red
+# before you press enter. Keep this the last thing sourced, see the note above.
+if [[ -r "$zsh_plugin_dir/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ]]; then
+  source "$zsh_plugin_dir/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+fi
+
+unset zsh_plugin_dir
