@@ -1,7 +1,6 @@
 # Common aliases
 alias ga='git add'
 alias gaa='git add .'
-alias gbc='git branch -d $(git branch --merged=master | grep -v master) & git fetch --prune'
 alias gbd='git branch -D'
 alias gbv='git branch -v'
 alias gca='git commit --amend'
@@ -21,3 +20,65 @@ alias gs='git status'
 alias gst='git stash'
 
 alias ghpr='gh pr status'
+
+# gbc used to be an alias, and zsh will not define a function over an existing
+# alias, so a shell that still has the old one loaded has to have it cleared
+# before it can re-source this file.
+unalias gbc 2>/dev/null || true
+
+# Deletes every local branch that has already been merged into the default
+# branch, then prunes the remote-tracking branches that have gone away.
+#
+# The default branch comes from origin/HEAD rather than being assumed, and the
+# branch list is asked for with --format so there is no "* " current-branch
+# marker to filter out: filtering that marker by name would also swallow every
+# branch whose own name happened to contain "main" or "master".
+gbc() {
+  local default ref current branch rc=0
+
+  # The `|| true` keeps a shell that sources this file under errexit alive when
+  # there is no origin/HEAD to read, or no repository here at all.
+  default="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+  default="${default#origin/}"
+
+  # No origin/HEAD to read (no remote, or a clone made before git recorded it):
+  # fall back to whichever of the usual names the repository actually has.
+  if [[ -z "$default" ]]; then
+    for branch in main master; do
+      if git show-ref --quiet --verify "refs/heads/$branch"; then
+        default="$branch"
+        break
+      fi
+    done
+  fi
+
+  if [[ -n "$default" ]] && git show-ref --quiet --verify "refs/heads/$default"; then
+    ref="$default"
+  elif [[ -n "$default" ]] && git show-ref --quiet --verify "refs/remotes/origin/$default"; then
+    ref="origin/$default"
+  else
+    echo "gbc: cannot work out which branch to compare against" >&2
+    return 1
+  fi
+
+  current="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+
+  while IFS= read -r branch; do
+    # Never delete the branch we are on, the one we merged into, or the other
+    # long-lived name, however this repository happens to have them merged.
+    case "$branch" in
+      "" | "$default" | "$current" | main | master) continue ;;
+    esac
+    git branch -d "$branch" || rc=1
+  done <<MERGED
+$(git branch --merged "$ref" --format='%(refname:short)')
+MERGED
+
+  # Sequentially, after the deletes, and only when there is a remote to prune
+  # against.
+  if [[ -n "$(git remote)" ]]; then
+    git fetch --prune || rc=1
+  fi
+
+  return $rc
+}
