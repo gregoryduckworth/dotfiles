@@ -28,7 +28,7 @@ jobs:
           sudo apt-get install -y shellcheck
 
       - name: Shellcheck bash scripts
-        run: shellcheck -x install.sh update.sh tests/*.sh tests/helpers/*.sh
+        run: shellcheck -x install.sh update.sh lib/*.sh tests/*.sh tests/helpers/*.sh
 
       # Pinned by version and checksum so a formatting run never changes
       # underneath us and turns a green lint job red on an unrelated PR.
@@ -45,11 +45,11 @@ jobs:
           shfmt --version
 
       - name: Check bash formatting
-        run: shfmt -d -i 2 -ci install.sh update.sh tests/*.sh tests/helpers/*.sh
+        run: shfmt -d -i 2 -ci install.sh update.sh lib/*.sh tests/*.sh tests/helpers/*.sh
 
       - name: Check bash syntax
         run: |
-          for file in install.sh update.sh tests/*.sh tests/helpers/*.sh; do
+          for file in install.sh update.sh lib/*.sh tests/*.sh tests/helpers/*.sh; do
             echo "bash -n $file"
             bash -n "$file"
           done

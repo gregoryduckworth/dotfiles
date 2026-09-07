@@ -5,6 +5,9 @@ set -euo pipefail
 # directory, so `~/somewhere/dotfiles/install.sh` works from anywhere.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# shellcheck source=lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
+
 HOMEBREW_INSTALLER="https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh"
 
 # Set by --dry-run. Every command that changes the machine goes through run(),
@@ -126,7 +129,10 @@ source_profile() {
     fi
   fi
 
-  run cp -R "$SCRIPT_DIR/scripts" "$HOME/"
+  # ~/scripts is a mirror of the checkout, not a merge into whatever is
+  # already there: .zshrc sources every file in it, so a script the repo no
+  # longer ships has to stop being installed.
+  run install_scripts "$SCRIPT_DIR/scripts" "$HOME/scripts"
   run cp "$SCRIPT_DIR/.$1" "$HOME/.$1"
 
   echo "Run 'exec zsh' or open a new terminal to load .$1"

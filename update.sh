@@ -7,12 +7,16 @@ PROFILE=zshrc
 # directory, so `~/somewhere/dotfiles/update.sh` works from anywhere.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# shellcheck source=lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
+
 install_profile() {
   echo "Creating .$PROFILE file..."
 
   # No sudo: these files live in $HOME, and root-owned dotfiles only cause
-  # trouble on the next update.
-  cp -R "$SCRIPT_DIR/scripts" "$HOME/"
+  # trouble on the next update. ~/scripts mirrors the checkout, so an update
+  # also removes the scripts the repo has dropped since the last one.
+  install_scripts "$SCRIPT_DIR/scripts" "$HOME/scripts"
   cp "$SCRIPT_DIR/.$PROFILE" "$HOME/.$PROFILE"
 }
 

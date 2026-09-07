@@ -58,6 +58,12 @@ Two of the filenames are load-bearing, and `tests/profile_test.sh` guards both:
 The plugins in `zsh-plugins` are optional - `install.sh` installs them with the
 general packages, and a shell without them starts normally.
 
+`~/scripts` is a mirror of the checkout, not a merge into it: installing or
+updating removes anything in `~/scripts` that the repo no longer ships, so a
+deleted or renamed script stops being sourced. Do not drop your own files
+straight into `~/scripts`, as they will be cleaned out on the next run - add
+them to the checkout, or to `~/.zshrc.local` (see below).
+
 ### Nvm
 nvm owns the node runtime, the way `rbenv` and `pyenv` own theirs: `install.sh`
 installs only `nvm` and then `nvm install --lts`, so there is no
@@ -103,7 +109,7 @@ the real machine or run a real `brew`, `defaults` or `sudo`.
 | File | Covers |
 | --- | --- |
 | `tests/install_test.sh` | `install.sh` functions: brew installs, the CI/interactive prompt, profile installation and its failure paths, macOS defaults |
-| `tests/update_test.sh` | `update.sh`: the prompt's answers and the copy into `$HOME` |
+| `tests/update_test.sh` | `update.sh`: the prompt's answers and the sync into `$HOME` |
 | `tests/profile_test.sh` | `.zshrc`: loading `scripts/`, sourcing `~/.zshrc.local` last, and coping with a missing or empty `~/scripts` |
 | `tests/scripts_test.sh` | each file in `scripts/`: parses, exits cleanly, and defines the expected aliases, exports and functions |
 

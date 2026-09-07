@@ -187,6 +187,7 @@ test_dry_run_reports_the_work_without_doing_it() {
   output="$(CI=1 run_install_sh --dry-run)" || fail "--dry-run exited non-zero"
 
   assert_contains "$output" "[dry-run] brew update"
+  assert_contains "$output" "[dry-run] install_scripts $REPO_ROOT/scripts $HOME/scripts"
   assert_contains "$output" "[dry-run] cp $REPO_ROOT/.zshrc $HOME/.zshrc"
   assert_contains "$output" "[dry-run] defaults write com.apple.dock no-bouncing -bool true"
   assert_contains "$output" "[dry-run] brew cleanup"
@@ -241,12 +242,15 @@ test_source_profile_is_idempotent() {
   diff -r "$REPO_ROOT/scripts" "$HOME/scripts" || fail "installed scripts differ"
 }
 
-test_source_profile_removes_nothing_the_user_owns() {
+test_source_profile_mirrors_the_checkout_into_home_scripts() {
   mkdir -p "$HOME/scripts"
-  echo "mine" >"$HOME/scripts/local"
+  echo "stale" >"$HOME/scripts/leftover"
   source_profile zshrc >/dev/null
 
-  assert_file "$HOME/scripts/local"
+  # ~/scripts is a mirror of the checkout rather than a merge into it: .zshrc
+  # sources every file in there, so anything the repo does not ship has to go.
+  assert_missing "$HOME/scripts/leftover"
+  diff -r "$REPO_ROOT/scripts" "$HOME/scripts" || fail "installed scripts differ"
 }
 
 test_source_profile_keeps_the_local_override() {
@@ -266,6 +270,8 @@ fake_checkout() {
   FAKE_CHECKOUT="$TEST_TMP/checkout"
   mkdir -p "$FAKE_CHECKOUT"
   cp "$REPO_ROOT/install.sh" "$FAKE_CHECKOUT/"
+  # install.sh sources lib/ relative to its own directory.
+  cp -R "$REPO_ROOT/lib" "$FAKE_CHECKOUT/"
 }
 
 test_source_profile_fails_when_profile_missing() {
@@ -284,6 +290,27 @@ test_source_profile_fails_when_scripts_missing() {
   source "$FAKE_CHECKOUT/install.sh"
 
   assert_failure source_profile zshrc
+}
+
+# The bug this guards: `cp -R` merges into an existing directory and never
+# deletes, so a script dropped from the repo used to survive in ~/scripts, and
+# .zshrc kept sourcing it, on every machine that had already been bootstrapped.
+test_source_profile_removes_scripts_deleted_from_the_checkout() {
+  fake_checkout
+  cp "$REPO_ROOT/.zshrc" "$FAKE_CHECKOUT/"
+  mkdir -p "$FAKE_CHECKOUT/scripts"
+  echo "# one" >"$FAKE_CHECKOUT/scripts/one"
+  # shellcheck source=../install.sh
+  source "$FAKE_CHECKOUT/install.sh"
+  source_profile zshrc >/dev/null
+  assert_file "$HOME/scripts/one"
+
+  rm "$FAKE_CHECKOUT/scripts/one"
+  echo "# two" >"$FAKE_CHECKOUT/scripts/two"
+  source_profile zshrc >/dev/null
+
+  assert_missing "$HOME/scripts/one"
+  assert_file "$HOME/scripts/two"
 }
 
 test_source_profile_rejects_invalid_zsh() {

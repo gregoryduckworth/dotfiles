@@ -44,6 +44,32 @@ test_install_profile_keeps_the_local_override() {
   assert_eq "export SECRET=mine" "$(cat "$HOME/.zshrc.local")"
 }
 
+# The bug this guards: `cp -R` merges into an existing directory and never
+# deletes, so a script dropped from the repo used to survive in ~/scripts, and
+# .zshrc kept sourcing it, on every machine that had already been bootstrapped.
+test_install_profile_removes_scripts_deleted_from_the_checkout() {
+  local fake="$TEST_TMP/checkout"
+  mkdir -p "$fake/scripts"
+  cp "$REPO_ROOT/update.sh" "$fake/"
+  cp "$REPO_ROOT/.zshrc" "$fake/"
+  # update.sh sources lib/ relative to its own directory.
+  cp -R "$REPO_ROOT/lib" "$fake/"
+  echo "# one" >"$fake/scripts/one"
+
+  # Re-sourcing update.sh from the fake checkout repoints SCRIPT_DIR at it.
+  # shellcheck source=../update.sh
+  source "$fake/update.sh"
+  install_profile >/dev/null
+  assert_file "$HOME/scripts/one"
+
+  rm "$fake/scripts/one"
+  echo "# two" >"$fake/scripts/two"
+  install_profile >/dev/null
+
+  assert_missing "$HOME/scripts/one"
+  assert_file "$HOME/scripts/two"
+}
+
 test_install_profile_does_not_use_sudo() {
   # Root-owned files in $HOME break every later update, so update.sh must not
   # reach for sudo just to copy into the user's own home directory.
@@ -70,6 +96,8 @@ run_update() {
   mkdir -p "$fake/bin"
   cp "$REPO_ROOT/.zshrc" "$fake/"
   cp -R "$REPO_ROOT/scripts" "$fake/"
+  # update.sh sources lib/ relative to its own directory.
+  cp -R "$REPO_ROOT/lib" "$fake/"
 
   # update.sh ends in `exec /bin/zsh`. Point that at a do-nothing stub so the
   # exec cannot replace the test process with a real interactive shell.
