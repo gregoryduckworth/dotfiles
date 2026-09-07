@@ -44,6 +44,31 @@ manager offers; pin one instead with:
 DOTFILES_RUBY_VERSION=3.3.6 DOTFILES_PYTHON_VERSION=3.12.7 ./install.sh
 ```
 
+## Packages
+
+Packages live in Brewfiles and are installed with `brew bundle`, so adding one
+is a one-line diff and Homebrew handles casks, taps and the
+already-installed check.
+
+| File | Installed |
+| --- | --- |
+| `Brewfile` | always |
+| `Brewfile.ruby` | when you answer yes to the Ruby prompt |
+| `Brewfile.python` | when you answer yes to the Python prompt |
+| `Brewfile.node` | when you answer yes to the Node prompt |
+
+`brew bundle` has no tag support, so an optional group is a separate file. The
+Ruby and Python ones declare only `rbenv` and `pyenv`: the interpreter itself
+comes from the version manager, not from Homebrew.
+
+Outside `install.sh` they are ordinary Brewfiles:
+
+```sh
+brew bundle --file=Brewfile         # install
+brew bundle check --file=Brewfile   # dry run: what is missing?
+brew bundle cleanup --file=Brewfile # report packages no longer declared
+```
+
 ## Scripts
 
 Every file in `scripts/` is sourced by `.zshrc` on shell startup, in glob
@@ -116,7 +141,8 @@ the real machine or run a real `brew`, `defaults` or `sudo`.
 
 | File | Covers |
 | --- | --- |
-| `tests/install_test.sh` | `install.sh` functions: brew installs, the CI/interactive prompt, the symlinks into `$HOME` and their backup and failure paths, macOS defaults |
+| `tests/install_test.sh` | `install.sh` functions: `brew bundle` installs, the CI/interactive prompt, the symlinks into `$HOME` and their backup and failure paths, macOS defaults |
+| `tests/brewfile_test.sh` | the Brewfiles: every one is installed by `install.sh`, and every entry is a directive `brew bundle` understands |
 | `tests/profile_test.sh` | `.zshrc`: loading `scripts/`, sourcing `~/.zshrc.local` last, and coping with a missing or empty `~/scripts` |
 | `tests/scripts_test.sh` | each file in `scripts/`: parses, exits cleanly, and defines the expected aliases, exports and functions |
 

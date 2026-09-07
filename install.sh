@@ -71,32 +71,19 @@ homebrew_cleanup() {
   run brew cleanup
 }
 
-# General Brew Install
-brew_install() {
-  local install_type=""
-  if [[ "$1" == "--cask" ]]; then
-    install_type="--cask"
-    shift
+# Installs everything declared in one of the checkout's Brewfiles. Homebrew
+# handles formulae, casks, taps and the already-installed check itself, so
+# adding a package is a one-line diff to a Brewfile rather than a shell edit.
+brew_bundle() {
+  local brewfile="$SCRIPT_DIR/$1"
+
+  if [[ ! -f "$brewfile" ]]; then
+    echo "Error: $1 not found"
+    return 1
   fi
 
-  echo "Installing packages..."
-  for package in "$@"; do
-    if [[ -n "$install_type" ]]; then
-      if ! brew list --cask "$package" &>/dev/null; then
-        echo "Installing $package..."
-        run brew install --cask "$package"
-      else
-        echo "$package is already installed..."
-      fi
-    else
-      if ! brew list --formula "$package" &>/dev/null; then
-        echo "Installing $package..."
-        run brew install "$package"
-      else
-        echo "$package is already installed..."
-      fi
-    fi
-  done
+  echo "Installing packages from $1..."
+  run brew bundle --file="$brewfile"
 }
 
 # link_into_checkout <target> <link>
@@ -192,21 +179,7 @@ install_check() {
 
 ## ---------- General Packages ---------- ##
 packages_install() {
-  PACKAGES=(
-    git
-    gh
-    # Sourced by scripts/zsh-plugins, which skips them when they are missing.
-    zsh-autosuggestions
-    zsh-syntax-highlighting
-  )
-  brew_install "${PACKAGES[@]}"
-  CASKS=(
-    google-chrome
-    iterm2
-    slack
-    visual-studio-code
-  )
-  brew_install --cask "${CASKS[@]}"
+  brew_bundle Brewfile
 }
 
 ## ---------- Language Version Managers -- ##
@@ -252,11 +225,7 @@ version_to_install() {
 
 ## ---------- Ruby Dependencies ---------- ##
 ruby_install() {
-  # Packages to install with Brew
-  PACKAGES=(
-    rbenv
-  )
-  brew_install "${PACKAGES[@]}"
+  brew_bundle Brewfile.ruby
 
   # scripts/rbenv only puts the shims on $PATH in a *new* shell, so without
   # this the gems below would go to the system Ruby - the very thing rbenv is
@@ -285,13 +254,7 @@ ruby_install() {
 
 ## ---------- Python Dependencies -------- ##
 python_install() {
-  # No Homebrew python: pyenv builds and owns the interpreter this profile
-  # uses, and pip refuses to touch a Homebrew one anyway
-  # (error: externally-managed-environment).
-  PACKAGES=(
-    pyenv
-  )
-  brew_install "${PACKAGES[@]}"
+  brew_bundle Brewfile.python
 
   # As with rbenv above: scripts/pyenv only takes effect in a new shell, and a
   # dry run has no pyenv to ask for its root.
@@ -344,10 +307,7 @@ nvm_script_path() {
 # packages with it, and Homebrew's `npm` is just an alias for the `node`
 # formula, so it would install node a second time.
 node_install() {
-  PACKAGES=(
-    nvm
-  )
-  brew_install "${PACKAGES[@]}"
+  brew_bundle Brewfile.node
 
   # The formula leaves $NVM_DIR to us, and nvm needs it to exist before it can
   # install a runtime into it.

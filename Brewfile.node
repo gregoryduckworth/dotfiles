@@ -1,0 +1,7 @@
+# Optional Node group, installed by `node_install` in install.sh.
+#
+# nvm is the only node here: a Homebrew node would race nvm's shims for $PATH,
+# and Homebrew's `npm` is an alias for the `node` formula rather than a formula
+# of its own. install.sh installs the runtime itself with `nvm install --lts`.
+
+brew "nvm"
