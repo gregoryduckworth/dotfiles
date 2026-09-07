@@ -1,0 +1,30 @@
+enabled: true
+entrypoint: python3 main.py
+keep_alive: null
+model: null
+name: GitHub Issue to PR Agent - gregoryduckworth/dotfiles
+preset_metadata:
+  first_run:
+    failure_stage: null
+    recorded_at: '2026-09-07T09:08:51.844764+00:00'
+    status: success
+    template_version: 1.0.0
+  template:
+    config:
+      branch_prefix: openhands/issue
+      pull_request_mode: ready
+      repos:
+      - gregoryduckworth/dotfiles
+      trigger_label: openhands
+    id: github-issue-to-pr
+    version: 1.0.0
+prompt: null
+setup_script_path: null
+tarball_source:
+  type: internal
+  url: null
+timeout: 900
+trigger:
+  schedule: '*/15 * * * *'
+  timezone: UTC
+  type: cron
