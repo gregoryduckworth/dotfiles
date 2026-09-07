@@ -1,6 +1,19 @@
-# Setup some basic Browserstack credentials and the default location for Chrome
-export BROWSERSTACK_USERNAME=
-export BROWSERSTACK_ACCESS_KEY=
-# Quoted, so the space needs no backslash: with one, $CHROME held a literal
-# backslash and every "$CHROME" invocation failed.
+# Browserstack credentials are per-machine secrets, so this tracked file must
+# never hold them: put them in ~/.zshrc.local, which is gitignored and sourced
+# last by .zshrc. The empty assignments that used to live here wiped out any
+# credentials the environment already carried on every new shell.
+#
+# Mark them for export only when they hold something, so a credential set as a
+# plain shell variable still reaches the tools launched from here, and an unset
+# one stays unset rather than becoming an empty string.
+if [[ -n ${BROWSERSTACK_USERNAME:-} ]]; then
+  export BROWSERSTACK_USERNAME
+fi
+if [[ -n ${BROWSERSTACK_ACCESS_KEY:-} ]]; then
+  export BROWSERSTACK_ACCESS_KEY
+fi
+
+# The default location for Chrome. Quoted, so the space needs no backslash:
+# with one, $CHROME held a literal backslash and every "$CHROME" invocation
+# failed.
 export CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"

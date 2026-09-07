@@ -172,12 +172,50 @@ test_homebrew_curl_is_prepended_when_present() {
 
 ## ---------- scripts/browserstack ---------- ##
 
-test_browserstack_exports_placeholders_and_chrome() {
+test_browserstack_keeps_credentials_from_the_environment() {
   skip_unless_command zsh
-  assert_eq "" "$(zsh_script browserstack 'echo $BROWSERSTACK_USERNAME')"
-  assert_eq "" "$(zsh_script browserstack 'echo $BROWSERSTACK_ACCESS_KEY')"
+  # The file used to export empty strings unconditionally, so every new shell
+  # wiped out credentials the environment already carried.
+  export BROWSERSTACK_USERNAME=someone BROWSERSTACK_ACCESS_KEY=s3cret
+
+  assert_eq "someone" "$(zsh_script browserstack 'echo $BROWSERSTACK_USERNAME')"
+  assert_eq "s3cret" "$(zsh_script browserstack 'echo $BROWSERSTACK_ACCESS_KEY')"
+}
+
+test_browserstack_leaves_unset_credentials_unset() {
+  skip_unless_command zsh
+  # Whatever the machine running the suite happens to export.
+  unset BROWSERSTACK_USERNAME BROWSERSTACK_ACCESS_KEY
+  # Unset, not set-but-empty: anything checking `${VAR:?}` or falling back to a
+  # config file has to be able to tell the difference.
+  assert_eq "yes" "$(zsh_script browserstack '[[ -z ${BROWSERSTACK_USERNAME+set} ]] && echo yes')"
+  assert_eq "yes" "$(zsh_script browserstack '[[ -z ${BROWSERSTACK_ACCESS_KEY+set} ]] && echo yes')"
+}
+
+test_browserstack_exports_a_credential_set_as_a_plain_variable() {
+  skip_unless_command zsh
+  unset BROWSERSTACK_USERNAME BROWSERSTACK_ACCESS_KEY
   # Exported, so tools launched from the shell can pick the values up.
-  assert_eq "yes" "$(zsh_script browserstack '[[ -n ${(t)BROWSERSTACK_USERNAME} && ${(t)BROWSERSTACK_USERNAME} == *export* ]] && echo yes')"
+  local name
+  for name in BROWSERSTACK_USERNAME BROWSERSTACK_ACCESS_KEY; do
+    assert_eq "scalar-export" "$(zsh -c "
+      set -e
+      $name=value
+      source '$REPO_ROOT/scripts/browserstack'
+      echo \${(t)$name}")" "$name"
+  done
+}
+
+test_browserstack_holds_no_credentials_of_its_own() {
+  # A real key in this tracked file is one `gaa` away from being published.
+  local assignments
+  assignments="$(grep -nE "^[[:space:]]*(export[[:space:]]+)?BROWSERSTACK_[A-Z_]+=" \
+    "$REPO_ROOT/scripts/browserstack" || true)"
+  assert_eq "" "$assignments" "scripts/browserstack assigns a credential"
+}
+
+test_browserstack_exports_chrome() {
+  skip_unless_command zsh
   # No stray backslash: the path has to survive being used as "$CHROME".
   assert_eq "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
     "$(zsh_script browserstack 'echo $CHROME')"

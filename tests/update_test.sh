@@ -35,6 +35,15 @@ test_install_profile_is_idempotent() {
   diff -r "$REPO_ROOT/scripts" "$HOME/scripts" || fail "installed scripts differ"
 }
 
+test_install_profile_keeps_the_local_override() {
+  # ~/.zshrc.local holds machine-specific settings and secrets, so an update
+  # must never overwrite or remove it.
+  echo 'export SECRET=mine' >"$HOME/.zshrc.local"
+  install_profile >/dev/null
+
+  assert_eq "export SECRET=mine" "$(cat "$HOME/.zshrc.local")"
+}
+
 test_install_profile_does_not_use_sudo() {
   # Root-owned files in $HOME break every later update, so update.sh must not
   # reach for sudo just to copy into the user's own home directory.

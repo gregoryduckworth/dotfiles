@@ -57,6 +57,36 @@ test_profile_can_be_sourced_twice() {
   zsh_profile 'source ~/.zshrc' || fail ".zshrc is not safe to re-source"
 }
 
+## ---------- ~/.zshrc.local ---------- ##
+
+test_profile_sources_the_local_override_last() {
+  skip_unless_command zsh
+  install_profile_into_home
+  # Machine-specific settings and secrets have to win over the tracked scripts,
+  # which is the whole point of keeping them out of the repo.
+  echo 'export CHROME=/custom/chrome' >"$HOME/.zshrc.local"
+
+  assert_eq "/custom/chrome" "$(zsh_profile 'echo $CHROME')"
+}
+
+test_profile_survives_a_missing_local_override() {
+  skip_unless_command zsh
+  install_profile_into_home
+  assert_missing "$HOME/.zshrc.local"
+
+  # The override is optional, and a missing one must not leave a non-zero
+  # status behind for a caller running under errexit.
+  zsh_profile || fail ".zshrc failed with no ~/.zshrc.local"
+}
+
+test_local_override_is_not_tracked_by_the_repo() {
+  skip_unless_command git
+  # A credential in a tracked file is one `gaa` (`git add .`) away from being
+  # published, so git has to ignore the override outright.
+  git -C "$REPO_ROOT" check-ignore -q .zshrc.local ||
+    fail ".zshrc.local is not gitignored"
+}
+
 test_sz_alias_reloads_the_installed_profile() {
   skip_unless_command zsh
   install_profile_into_home

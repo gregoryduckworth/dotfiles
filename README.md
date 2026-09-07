@@ -21,6 +21,29 @@ Every file in `scripts/` is sourced by `.zshrc` on shell startup.
 ### Github
 This sets up a few aliases, hub and adds the branch to the terminal output
 
+### Browserstack
+Points `$CHROME` at the macOS Chrome binary and exports
+`BROWSERSTACK_USERNAME` / `BROWSERSTACK_ACCESS_KEY` when they already hold a
+value. It never assigns them: the credentials belong in `~/.zshrc.local` (see
+below), not in this tracked file.
+
+## Local overrides
+
+`.zshrc` sources `~/.zshrc.local` last, if it exists. Anything
+machine-specific or secret goes there, where it overrides everything in
+`scripts/`:
+
+```sh
+cat >>~/.zshrc.local <<'EOF'
+export BROWSERSTACK_USERNAME=your-username
+export BROWSERSTACK_ACCESS_KEY=your-access-key
+EOF
+```
+
+The file lives in `$HOME` and is never copied, overwritten or removed by
+`install.sh` or `update.sh`, and `.gitignore` covers it so a copy made inside
+the checkout cannot be committed by a stray `gaa` (`git add .`).
+
 ## Tests
 
 ```sh
@@ -37,7 +60,7 @@ the real machine or run a real `brew`, `defaults` or `sudo`.
 | --- | --- |
 | `tests/install_test.sh` | `install.sh` functions: brew installs, the CI/interactive prompt, profile installation and its failure paths, macOS defaults |
 | `tests/update_test.sh` | `update.sh`: the prompt's answers and the copy into `$HOME` |
-| `tests/profile_test.sh` | `.zshrc`: loading `scripts/`, and coping with a missing or empty `~/scripts` |
+| `tests/profile_test.sh` | `.zshrc`: loading `scripts/`, sourcing `~/.zshrc.local` last, and coping with a missing or empty `~/scripts` |
 | `tests/scripts_test.sh` | each file in `scripts/`: parses, exits cleanly, and defines the expected aliases, exports and functions |
 
 `tests/helpers/framework.sh` is the (dependency-free) test framework: a test
