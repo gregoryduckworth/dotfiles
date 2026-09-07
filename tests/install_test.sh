@@ -20,52 +20,41 @@ HOME="$(mktemp -d)"
 # shellcheck source=../install.sh
 source "$REPO_ROOT/install.sh" </dev/null
 
-# A brew stub that reports every package as missing.
-stub_brew_missing() {
-  # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
-  stub brew '[[ "$1 $2" == list* ]] && exit 1; exit 0'
-}
+## ---------- brew_bundle ---------- ##
 
-# A brew stub that reports every package as already installed.
-stub_brew_present() {
+test_brew_bundle_installs_from_the_checkouts_brewfile() {
   stub brew 'exit 0'
+  # prove the Brewfile is resolved against the checkout, not the caller's cwd
+  cd "$TEST_TMP" || fail "could not enter $TEST_TMP"
+  brew_bundle Brewfile >/dev/null
+
+  assert_stub_called brew "bundle --file=$REPO_ROOT/Brewfile"
 }
 
-## ---------- brew_install ---------- ##
+test_brew_bundle_fails_when_the_brewfile_is_missing() {
+  stub brew 'exit 0'
 
-test_brew_install_installs_missing_formulae() {
-  stub_brew_missing
-  brew_install git gh >/dev/null
-
-  assert_stub_called brew "list --formula git"
-  assert_stub_called brew "install git"
-  assert_stub_called brew "install gh"
+  assert_failure brew_bundle Brewfile.nope
+  assert_eq "" "$(stub_calls brew)" "brew ran for a Brewfile that does not exist"
 }
 
-test_brew_install_skips_installed_formulae() {
-  stub_brew_present
-  local output
-  output="$(brew_install git)"
+test_brew_bundle_propagates_a_failing_bundle() {
+  stub brew 'exit 1'
 
-  assert_stub_not_called brew "install git"
-  assert_contains "$output" "git is already installed"
+  assert_failure brew_bundle Brewfile
 }
 
-test_brew_install_uses_cask_for_casks() {
-  stub_brew_missing
-  brew_install --cask iterm2 >/dev/null
+## ---------- packages_install ---------- ##
 
-  assert_stub_called brew "list --cask iterm2"
-  assert_stub_called brew "install --cask iterm2"
-  assert_stub_not_called brew "install iterm2"
-}
+# The base set is the one group with no version manager behind it, so it is
+# nothing but its Brewfile. The Ruby, Python and Node groups install theirs
+# too; that is asserted by their own tests further down, which have the
+# version-manager stubs those groups need.
+test_packages_install_installs_the_base_brewfile() {
+  stub brew 'exit 0'
+  packages_install >/dev/null
 
-test_brew_install_handles_packages_with_dashes() {
-  stub_brew_missing
-  brew_install --cask google-chrome visual-studio-code >/dev/null
-
-  assert_stub_called brew "install --cask google-chrome"
-  assert_stub_called brew "install --cask visual-studio-code"
+  assert_eq "bundle --file=$REPO_ROOT/Brewfile" "$(stub_calls brew)"
 }
 
 ## ---------- homebrew_install / homebrew_cleanup ---------- ##
@@ -214,16 +203,15 @@ test_dry_run_does_not_move_a_real_zshrc_aside() {
 }
 
 test_dry_run_lists_the_packages_it_would_install() {
-  stub_brew_missing
+  stub brew 'exit 0'
   DRY_RUN=1
   local output
   output="$(packages_install)"
 
-  assert_contains "$output" "[dry-run] brew install git"
-  assert_contains "$output" "[dry-run] brew install --cask visual-studio-code"
-  # Read-only lookups still run, so the report can say what is already there.
-  assert_stub_called brew "list --formula git"
-  assert_stub_not_called brew "install git"
+  # Homebrew resolves the Brewfile, so a dry run reports the bundle rather
+  # than a package at a time.
+  assert_contains "$output" "[dry-run] brew bundle --file=$REPO_ROOT/Brewfile"
+  assert_eq "" "$(stub_calls brew)" "--dry-run ran brew"
 }
 
 test_short_dry_run_flag_is_accepted() {
@@ -366,19 +354,20 @@ NVM_SH
 }
 
 test_node_install_installs_nvm_and_nothing_else() {
-  stub_brew_missing
+  stub brew 'exit 0'
   fake_nvm_script "$HOME/.nvm"
   node_install >/dev/null
 
-  assert_stub_called brew "install nvm"
   # A brew node would race nvm's shims for $PATH, and brew's npm is only an
   # alias for the node formula, so it would install node a second time.
-  assert_stub_not_called brew "install node"
-  assert_stub_not_called brew "install npm"
+  # Brewfile.node declares nvm alone (see brewfile_test.sh), so the bundle is
+  # the only thing node_install has Homebrew install.
+  assert_stub_called brew "bundle --file=$REPO_ROOT/Brewfile.node"
+  assert_not_contains "$(stub_calls brew)" "install"
 }
 
 test_node_install_installs_the_lts_and_makes_it_the_default() {
-  stub_brew_missing
+  stub brew 'exit 0'
   fake_nvm_script "$HOME/.nvm"
   node_install >/dev/null
 
@@ -390,9 +379,9 @@ test_node_install_loads_nvm_from_the_homebrew_prefix() {
   NVM_TEST_PREFIX="$TEST_TMP/homebrew/opt/nvm"
   export NVM_TEST_PREFIX
   fake_nvm_script "$NVM_TEST_PREFIX"
-  # brew reports nvm as missing, installs it, then hands out its prefix.
+  # brew installs the bundle, then hands out the formula's prefix.
   # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
-  stub brew '[[ "$1 $2" == list* ]] && exit 1; [[ "$1" == --prefix ]] && echo "$NVM_TEST_PREFIX"; exit 0'
+  stub brew '[[ "$1" == --prefix ]] && echo "$NVM_TEST_PREFIX"; exit 0'
   node_install >/dev/null
 
   assert_stub_called nvm "install --lts"
@@ -403,7 +392,7 @@ test_node_install_loads_nvm_from_the_homebrew_prefix() {
 
 test_node_install_fails_when_nvm_cannot_be_loaded() {
   # Nothing installs for real in the sandbox, so nvm.sh is nowhere to be found.
-  stub_brew_missing
+  stub brew 'exit 0'
 
   assert_failure node_install
 }
@@ -546,7 +535,7 @@ shim() {
 # rbenv plus a shimmed gem, and a system gem that fails the way the real one
 # does when it is asked to write into a root-owned Ruby.
 stub_ruby_env() {
-  stub_brew_missing
+  stub brew 'exit 0'
   stub_version_manager rbenv
   shim "$HOME/.rbenv/shims" gem
   stub gem 'echo "system gem: permission denied" >&2; exit 1'
@@ -555,7 +544,7 @@ stub_ruby_env() {
 # pyenv plus a shimmed python3, and a system python3 that refuses the way
 # Homebrew's does.
 stub_python_env() {
-  stub_brew_missing
+  stub brew 'exit 0'
   stub_version_manager pyenv
   shim "$HOME/.pyenv/shims" python3
   stub python3 'echo "error: externally-managed-environment" >&2; exit 1'
@@ -565,7 +554,7 @@ test_ruby_install_installs_a_ruby_before_any_gem() {
   stub_ruby_env
   ruby_install >/dev/null
 
-  assert_stub_called brew "install rbenv"
+  assert_stub_called brew "bundle --file=$REPO_ROOT/Brewfile.ruby"
   assert_stub_called rbenv "install --skip-existing 3.3.6"
   assert_stub_called rbenv "global 3.3.6"
   assert_stub_called shim-gem "install bundler"
@@ -589,7 +578,7 @@ test_ruby_install_honours_a_pinned_version() {
 }
 
 test_ruby_install_stops_when_no_version_can_be_resolved() {
-  stub_brew_missing
+  stub brew 'exit 0'
   # A manager whose list is empty, so no version can be resolved.
   # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
   stub rbenv 'case "$1 $2" in "root ") echo "$HOME/.rbenv" ;; esac; exit 0'
@@ -603,7 +592,7 @@ test_python_install_installs_a_python_before_any_pip() {
   stub_python_env
   python_install >/dev/null
 
-  assert_stub_called brew "install pyenv"
+  assert_stub_called brew "bundle --file=$REPO_ROOT/Brewfile.python"
   assert_stub_called pyenv "install --skip-existing 3.3.6"
   assert_stub_called pyenv "global 3.3.6"
   assert_stub_called shim-python3 "-m pip install --upgrade pip"
@@ -617,7 +606,9 @@ test_python_install_never_uses_the_system_python() {
   # Homebrew's python3 refuses both of these: --user is unsupported, and pip
   # reports an externally-managed-environment.
   assert_eq "" "$(stub_calls python3)" "python_install used the system python3"
-  assert_stub_not_called brew "install python"
+  # Brewfile.python declares no Homebrew python (see brewfile_test.sh), so the
+  # bundle is the only brew call python_install makes.
+  assert_eq "bundle --file=$REPO_ROOT/Brewfile.python" "$(stub_calls brew)"
   assert_not_contains "$(stub_calls shim-python3)" "--user"
 }
 
@@ -630,7 +621,7 @@ test_python_install_honours_a_pinned_version() {
 }
 
 test_python_install_stops_when_no_version_can_be_resolved() {
-  stub_brew_missing
+  stub brew 'exit 0'
   # A manager whose list is empty, so no version can be resolved.
   # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
   stub pyenv 'case "$1 $2" in "root ") echo "$HOME/.pyenv" ;; esac; exit 0'
@@ -648,7 +639,7 @@ test_dry_run_reports_the_ruby_install_without_running_it() {
   local output
   output="$(ruby_install)"
 
-  assert_contains "$output" "[dry-run] brew install rbenv"
+  assert_contains "$output" "[dry-run] brew bundle --file=$REPO_ROOT/Brewfile.ruby"
   assert_contains "$output" "[dry-run] rbenv install --skip-existing 3.3.6"
   assert_contains "$output" "[dry-run] rbenv global 3.3.6"
   assert_contains "$output" "[dry-run] gem install bundler"
@@ -674,8 +665,8 @@ test_dry_run_reports_the_python_install_without_running_it() {
 }
 
 test_dry_run_survives_a_version_manager_that_is_not_installed_yet() {
-  stub_brew_missing
-  # The `brew install rbenv` below is only printed, so a dry run reaches the
+  stub brew 'exit 0'
+  # The Brewfile.ruby bundle below is only printed, so a dry run reaches the
   # version lookup with no rbenv to ask. The stub stands in for that machine; a
   # real rbenv on the host would otherwise answer with a real version and make
   # this test depend on where it runs.
@@ -684,7 +675,7 @@ test_dry_run_survives_a_version_manager_that_is_not_installed_yet() {
   local output
   output="$(ruby_install)" || fail "ruby_install failed under --dry-run"
 
-  assert_contains "$output" "[dry-run] brew install rbenv"
+  assert_contains "$output" "[dry-run] brew bundle --file=$REPO_ROOT/Brewfile.ruby"
   # No version can be known in advance, so the step is named rather than
   # resolved - and `rbenv root` is never asked for the shim path either.
   assert_contains "$output" "[dry-run] rbenv install --skip-existing <latest stable>"

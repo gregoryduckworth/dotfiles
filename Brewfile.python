@@ -1,0 +1,7 @@
+# Optional Python group, installed by `python_install` in install.sh.
+#
+# No Homebrew python: pyenv builds and owns the interpreter this profile uses,
+# and pip refuses to touch a Homebrew one anyway
+# (error: externally-managed-environment).
+
+brew "pyenv"

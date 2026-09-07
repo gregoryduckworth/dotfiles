@@ -85,6 +85,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # The dependency-free test suite checks the Brewfiles by hand because it
+      # has to run without Homebrew. Here Homebrew is present, so let it parse
+      # them for real; `list` resolves every entry without installing anything.
+      - name: Parse the Brewfiles with brew bundle
+        run: |
+          for brewfile in Brewfile Brewfile.*; do
+            echo "brew bundle list --all --file=$brewfile"
+            brew bundle list --all --file="$brewfile"
+          done
+
       - name: Run install.sh against a sandbox home
         run: |
           sandbox="$(mktemp -d)"
