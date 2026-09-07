@@ -225,13 +225,59 @@ python_install() {
 }
 
 ## ---------- Node Dependencies ---------- ##
+
+# Prints the path to nvm.sh, which has to be sourced before `nvm` exists as a
+# shell function. Mirrors the lookup in scripts/nvm: $NVM_DIR for an
+# install-script install, Homebrew's prefix for the formula.
+nvm_script_path() {
+  local brew_prefix=""
+  if command -v brew &>/dev/null; then
+    brew_prefix="$(brew --prefix nvm 2>/dev/null || true)"
+  fi
+
+  local dir
+  for dir in "${NVM_DIR:-$HOME/.nvm}" "$brew_prefix"; do
+    if [[ -n "$dir" && -s "$dir/nvm.sh" ]]; then
+      echo "$dir/nvm.sh"
+      return 0
+    fi
+  done
+
+  echo "Error: could not find nvm.sh; is nvm installed?" >&2
+  return 1
+}
+
+# nvm is the only node here, the way rbenv and pyenv own their runtimes: a
+# Homebrew-installed node would race nvm's shims for $PATH and take the global
+# packages with it, and Homebrew's `npm` is just an alias for the `node`
+# formula, so it would install node a second time.
 node_install() {
   PACKAGES=(
-    node
-    npm
     nvm
   )
   brew_install "${PACKAGES[@]}"
+
+  # The formula leaves $NVM_DIR to us, and nvm needs it to exist before it can
+  # install a runtime into it.
+  export NVM_DIR="$HOME/.nvm"
+  mkdir -p "$NVM_DIR"
+
+  local nvm_sh
+  nvm_sh="$(nvm_script_path)" || return 1
+
+  echo "Installing the Node LTS..."
+  # nvm.sh is not written to be sourced under `set -eu`, so load it and use it
+  # in a subshell with both relaxed; the runtime it installs lands in $NVM_DIR,
+  # which outlives the subshell.
+  if ! (
+    set +eu
+    # shellcheck source=/dev/null
+    \. "$nvm_sh"
+    nvm install --lts && nvm alias default "lts/*"
+  ); then
+    echo "Error: nvm could not install the Node LTS"
+    return 1
+  fi
 }
 
 # Basic macOS configurations

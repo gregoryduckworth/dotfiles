@@ -1,10 +1,29 @@
 # NVM
+# nvm owns the node runtime on this machine, so this has to load on every new
+# shell: without it there is no node on $PATH at all.
+#
+# $NVM_DIR is where nvm keeps the runtimes it installs either way, but nvm.sh
+# itself only lives there for an install-script install; `brew install nvm`
+# leaves it under Homebrew's prefix.
 export NVM_DIR="$HOME/.nvm"
+
 # Plain `[ ... ] && ...` would leave a non-zero status behind when nvm is not
 # installed, which aborts any caller that sources .zshrc under `set -e`.
-if [ -s "$NVM_DIR/nvm.sh" ]; then
-  \. "$NVM_DIR/nvm.sh" # This loads nvm
-fi
-if [ -s "$NVM_DIR/bash_completion" ]; then
-  \. "$NVM_DIR/bash_completion" # This loads nvm bash_completion
-fi
+for nvm_prefix in \
+  "$NVM_DIR" \
+  ${HOMEBREW_PREFIX:+"$HOMEBREW_PREFIX/opt/nvm"} \
+  /opt/homebrew/opt/nvm \
+  /usr/local/opt/nvm; do
+  if [ -s "$nvm_prefix/nvm.sh" ]; then
+    \. "$nvm_prefix/nvm.sh" # This loads nvm
+    # The completion is at the top of the directory for an install-script
+    # install, and under etc/ for the Homebrew formula.
+    if [ -s "$nvm_prefix/bash_completion" ]; then
+      \. "$nvm_prefix/bash_completion" # This loads nvm bash_completion
+    elif [ -s "$nvm_prefix/etc/bash_completion.d/nvm" ]; then
+      \. "$nvm_prefix/etc/bash_completion.d/nvm"
+    fi
+    break
+  fi
+done
+unset nvm_prefix

@@ -51,6 +51,13 @@ Two of the filenames are load-bearing, and `tests/profile_test.sh` guards both:
 The plugins in `zsh-plugins` are optional - `install.sh` installs them with the
 general packages, and a shell without them starts normally.
 
+### Nvm
+nvm owns the node runtime, the way `rbenv` and `pyenv` own theirs: `install.sh`
+installs only `nvm` and then `nvm install --lts`, so there is no
+Homebrew-installed `node` racing nvm's shims for `$PATH`. This script loads nvm
+on every new shell - without it there is no `node` on `$PATH` at all - and finds
+`nvm.sh` whether it came from the Homebrew formula or from nvm's own installer.
+
 ### Browserstack
 Points `$CHROME` at the macOS Chrome binary and exports
 `BROWSERSTACK_USERNAME` / `BROWSERSTACK_ACCESS_KEY` when they already hold a
