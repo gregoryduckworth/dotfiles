@@ -14,6 +14,15 @@ Install script for useful items
 Both scripts resolve paths against the checkout, so they can be run from
 anywhere, and both are safe to re-run.
 
+The Ruby and Python steps install `rbenv` and `pyenv` and then build a language
+version with them, so gems and pip packages never land in the system or
+Homebrew toolchain. Both default to the newest stable release the version
+manager offers; pin one instead with:
+
+```sh
+DOTFILES_RUBY_VERSION=3.3.6 DOTFILES_PYTHON_VERSION=3.12.7 ./install.sh
+```
+
 ## Scripts
 
 Every file in `scripts/` is sourced by `.zshrc` on shell startup.

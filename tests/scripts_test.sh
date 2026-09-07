@@ -152,6 +152,39 @@ test_rbenv_is_skipped_when_not_installed() {
   assert_eq "" "$errors" "scripts/rbenv complained about the missing rbenv"
 }
 
+## ---------- scripts/pyenv ---------- ##
+
+test_pyenv_is_initialised_when_installed() {
+  skip_unless_command zsh
+  stub pyenv 'echo "export PYENV_LOADED=yes"'
+
+  assert_eq "yes" "$(zsh_script pyenv 'echo $PYENV_LOADED')"
+}
+
+test_pyenv_init_skips_the_startup_rehash() {
+  skip_unless_command zsh
+  # A rehash on startup is slow, and fails before any version is installed,
+  # which would abort a profile sourced under errexit.
+  stub pyenv 'exit 0'
+  zsh_script pyenv || fail "scripts/pyenv left a non-zero exit status behind"
+
+  assert_stub_called pyenv "init --no-rehash - zsh"
+}
+
+test_pyenv_shims_are_added_to_the_path() {
+  skip_unless_command zsh
+  assert_contains "$(zsh_script pyenv 'echo $PATH')" "$HOME/.pyenv/bin"
+}
+
+test_pyenv_is_skipped_when_not_installed() {
+  skip_unless_command zsh
+  local errors
+  # A PATH with no pyenv on it, so the `which pyenv` guard has to hold.
+  errors="$(PATH="/usr/bin:/bin" zsh_script pyenv 2>&1 >/dev/null)" ||
+    fail "scripts/pyenv failed without pyenv installed"
+  assert_eq "" "$errors" "scripts/pyenv complained about the missing pyenv"
+}
+
 ## ---------- scripts/homebrew ---------- ##
 
 test_homebrew_curl_is_prepended_when_present() {

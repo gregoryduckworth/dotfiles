@@ -124,6 +124,40 @@ packages_install() {
   brew_install --cask "${CASKS[@]}"
 }
 
+## ---------- Language Version Managers -- ##
+# Latest stable version a version manager offers, from its `install --list`.
+# Both rbenv and pyenv list oldest first, so the last plain X.Y.Z line is the
+# newest stable release; anything with a suffix (3.4.0-preview1, 3.13.0rc1) or
+# a prefix (jruby-, pypy-, miniconda-) is skipped, so a bootstrap never lands
+# on a prerelease or an alternative implementation.
+latest_stable_version() {
+  "$1" install --list 2>/dev/null |
+    tr -d '[:blank:]' |
+    grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' |
+    tail -1
+}
+
+# version_to_install <manager> [pinned]
+#
+# Echoes the version to install: the pinned one when the caller set it,
+# otherwise the newest stable the manager knows about.
+version_to_install() {
+  local manager="$1" pinned="${2:-}" version=""
+
+  if [[ -n "$pinned" ]]; then
+    printf '%s\n' "$pinned"
+    return 0
+  fi
+
+  version="$(latest_stable_version "$manager")" || version=""
+  if [[ -z "$version" ]]; then
+    echo "Error: could not work out which $manager version to install" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$version"
+}
+
 ## ---------- Ruby Dependencies ---------- ##
 ruby_install() {
   # Packages to install with Brew
@@ -131,27 +165,57 @@ ruby_install() {
     rbenv
   )
   brew_install "${PACKAGES[@]}"
+
+  # scripts/rbenv only puts the shims on $PATH in a *new* shell, so without
+  # this the gems below would go to the system Ruby - the very thing rbenv is
+  # here to avoid, and where `gem install` fails on permissions.
+  PATH="$(rbenv root)/shims:$PATH"
+  export PATH
+
+  local version
+  version="$(version_to_install rbenv "${DOTFILES_RUBY_VERSION:-}")" || return 1
+
+  echo "Installing Ruby $version..."
+  rbenv install --skip-existing "$version"
+  rbenv global "$version"
+
   RUBY_GEMS=(
     bundler
   )
   echo "Installing Ruby gems..."
   gem install "${RUBY_GEMS[@]}"
+  # A freshly installed gem only gets an executable shim after a rehash.
+  rbenv rehash
 }
 
 ## ---------- Python Dependencies -------- ##
 python_install() {
+  # No Homebrew python: pyenv builds and owns the interpreter this profile
+  # uses, and pip refuses to touch a Homebrew one anyway
+  # (error: externally-managed-environment).
   PACKAGES=(
-    python
     pyenv
   )
   brew_install "${PACKAGES[@]}"
-  echo "Checking Python version..."
-  python3 --version
-  # pip is included with Python 3.4+, so we just need to ensure it's up to date
+
+  # As with rbenv above: scripts/pyenv only takes effect in a new shell.
+  PATH="$(pyenv root)/shims:$PATH"
+  export PATH
+
+  local version
+  version="$(version_to_install pyenv "${DOTFILES_PYTHON_VERSION:-}")" || return 1
+
+  echo "Installing Python $version..."
+  pyenv install --skip-existing "$version"
+  pyenv global "$version"
+
+  # A pyenv interpreter owns its own site-packages, so pip needs neither
+  # --user (unsupported on Homebrew Python) nor a virtualenv of its own.
   echo "Ensuring pip is up to date..."
-  python3 -m pip install --upgrade pip --user
+  python3 -m pip install --upgrade pip
   echo "Install virtualenv..."
-  python3 -m pip install --user virtualenv
+  python3 -m pip install virtualenv
+  pyenv rehash
 }
 
 ## ---------- Node Dependencies ---------- ##
