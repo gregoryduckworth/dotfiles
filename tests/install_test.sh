@@ -89,7 +89,9 @@ test_homebrew_cleanup_runs_brew_cleanup() {
 ## ---------- install_check ---------- ##
 
 test_install_check_skips_prompt_in_ci() {
-  # shellcheck disable=SC2329  # invoked indirectly, via eval in install_check
+  # Invoked indirectly, via eval in install_check. Older shellcheck reports
+  # that as SC2317 on the body, newer as SC2329 on the function.
+  # shellcheck disable=SC2317,SC2329
   demo_install() { touch "$TEST_TMP/demo-ran"; }
   CI=1 install_check demo >/dev/null
 
@@ -97,7 +99,9 @@ test_install_check_skips_prompt_in_ci() {
 }
 
 test_install_check_installs_when_user_answers_yes() {
-  # shellcheck disable=SC2329  # invoked indirectly, via eval in install_check
+  # Invoked indirectly, via eval in install_check. Older shellcheck reports
+  # that as SC2317 on the body, newer as SC2329 on the function.
+  # shellcheck disable=SC2317,SC2329
   demo_install() { touch "$TEST_TMP/demo-ran"; }
   CI="" install_check demo <<<"1" >/dev/null
 
@@ -105,7 +109,9 @@ test_install_check_installs_when_user_answers_yes() {
 }
 
 test_install_check_skips_when_user_answers_no() {
-  # shellcheck disable=SC2329  # invoked indirectly, via eval in install_check
+  # Invoked indirectly, via eval in install_check. Older shellcheck reports
+  # that as SC2317 on the body, newer as SC2329 on the function.
+  # shellcheck disable=SC2317,SC2329
   demo_install() { touch "$TEST_TMP/demo-ran"; }
   CI="" install_check demo <<<"2" >/dev/null
 
