@@ -1,0 +1,11 @@
+version: 2
+
+updates:
+  # The workflow pins every action to a commit SHA, so Dependabot is the only
+  # thing that will ever move those pins forward.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci

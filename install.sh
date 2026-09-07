@@ -38,7 +38,7 @@ brew_install() {
     install_type="--cask"
     shift
   fi
-  
+
   echo "Installing packages..."
   for package in "$@"; do
     if [[ -n "$install_type" ]]; then
@@ -62,7 +62,7 @@ brew_install() {
 # Create and source the file
 source_profile() {
   echo "Creating .$1 file..."
-  
+
   # Check if source files exist
   if [[ ! -f "$SCRIPT_DIR/.$1" ]]; then
     echo "Error: .$1 not found"
@@ -98,11 +98,14 @@ install_check() {
     echo "Running in CI mode, skipping $1 dependencies..."
     return 0
   fi
-  
+
   echo "Do you wish to install $1 dependencies?"
   select yn in "Yes" "No"; do
     case $yn in
-      Yes) eval "${1}_install"; break ;;
+      Yes)
+        eval "${1}_install"
+        break
+        ;;
       No) break ;;
     esac
   done

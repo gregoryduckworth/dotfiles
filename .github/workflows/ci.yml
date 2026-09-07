@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install shellcheck
         run: |
@@ -29,6 +29,23 @@ jobs:
 
       - name: Shellcheck bash scripts
         run: shellcheck -x install.sh update.sh tests/*.sh tests/helpers/*.sh
+
+      # Pinned by version and checksum so a formatting run never changes
+      # underneath us and turns a green lint job red on an unrelated PR.
+      - name: Install shfmt
+        env:
+          SHFMT_VERSION: v3.14.1
+          SHFMT_SHA256: 76e77641faa025814b77f153b29796b8e6fa2fca03e0c76a691608b86c7ea7bf
+        run: |
+          curl -fsSL -o /tmp/shfmt \
+            "https://github.com/mvdan/sh/releases/download/$SHFMT_VERSION/shfmt_${SHFMT_VERSION}_linux_amd64"
+          echo "$SHFMT_SHA256  /tmp/shfmt" | sha256sum --check --strict
+          chmod +x /tmp/shfmt
+          sudo mv /tmp/shfmt /usr/local/bin/shfmt
+          shfmt --version
+
+      - name: Check bash formatting
+        run: shfmt -d -i 2 -ci install.sh update.sh tests/*.sh tests/helpers/*.sh
 
       - name: Check bash syntax
         run: |
@@ -47,7 +64,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install zsh
         if: runner.os == 'Linux'
@@ -66,7 +83,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Run install.sh against a sandbox home
         run: |
