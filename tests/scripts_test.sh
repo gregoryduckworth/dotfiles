@@ -313,14 +313,38 @@ test_rbenv_is_initialised_when_installed() {
 
 test_rbenv_shims_are_added_to_the_path() {
   skip_unless_command zsh
+  mkdir -p "$HOME/.rbenv/bin"
+
   assert_contains "$(zsh_script rbenv 'echo $PATH')" "$HOME/.rbenv/bin"
+}
+
+test_rbenv_shims_are_not_added_twice() {
+  skip_unless_command zsh
+  mkdir -p "$HOME/.rbenv/bin"
+  local path
+  # .zshrc is re-sourced by hand (`sz`) all the time; each re-source used to
+  # push another copy of the shims onto $PATH.
+  stub rbenv 'exit 0'
+  path="$(zsh_script rbenv "source '$REPO_ROOT/scripts/rbenv'; echo \$PATH")"
+
+  assert_eq "1" "$(printf '%s\n' "${path//:/$'\n'}" | grep -c "^$HOME/.rbenv/bin$")"
+}
+
+test_rbenv_shims_are_left_off_the_path_when_missing() {
+  skip_unless_command zsh
+  # A real rbenv on the host would prepend its own shims, so stub it out: the
+  # only thing under test is that a missing ~/.rbenv leaves $PATH alone rather
+  # than adding a directory that does not exist.
+  stub rbenv 'exit 0'
+
+  assert_not_contains "$(zsh_script rbenv 'echo $PATH')" "$HOME/.rbenv"
 }
 
 test_rbenv_is_skipped_when_not_installed() {
   skip_unless_command zsh
   local errors
-  # A PATH with no rbenv on it, so the `which rbenv` guard has to hold. Without
-  # it the eval still succeeds, so the tell is the noise on stderr.
+  # A PATH with no rbenv on it, so the `command -v rbenv` guard has to hold.
+  # Without it the eval still succeeds, so the tell is the noise on stderr.
   errors="$(PATH="/usr/bin:/bin" zsh_script rbenv 2>&1 >/dev/null)" ||
     fail "scripts/rbenv failed without rbenv installed"
   assert_eq "" "$errors" "scripts/rbenv complained about the missing rbenv"

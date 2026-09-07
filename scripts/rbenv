@@ -1,3 +1,9 @@
 # Ruby
-export PATH="$HOME/.rbenv/bin:$PATH"
-if which rbenv > /dev/null; then eval "$(rbenv init - zsh)"; fi
+# Only prepend the shims when they exist, and only once, so re-sourcing the
+# profile does not keep growing $PATH (scripts/homebrew guards its edit the
+# same way).
+if [[ -d "$HOME/.rbenv/bin" && ":$PATH:" != *":$HOME/.rbenv/bin:"* ]]; then
+  export PATH="$HOME/.rbenv/bin:$PATH"
+fi
+# `command -v` is the portable builtin, and is what install.sh uses throughout.
+if command -v rbenv > /dev/null; then eval "$(rbenv init - zsh)"; fi

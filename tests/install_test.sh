@@ -118,6 +118,107 @@ test_install_check_skips_when_user_answers_no() {
   assert_missing "$TEST_TMP/demo-ran"
 }
 
+test_install_check_explains_an_answer_it_did_not_understand() {
+  # Invoked indirectly, via eval in install_check. Older shellcheck reports
+  # that as SC2317 on the body, newer as SC2329 on the function.
+  # shellcheck disable=SC2317,SC2329
+  demo_install() { touch "$TEST_TMP/demo-ran"; }
+  local output
+  # "3" is not on the menu; the loop used to re-prompt in silence.
+  output="$(CI="" install_check demo <<<"$(printf '3\n2\n')")"
+
+  assert_contains "$output" "'3' is not one of the choices"
+  assert_missing "$TEST_TMP/demo-ran"
+}
+
+test_install_check_stops_at_end_of_input() {
+  # Invoked indirectly, via eval in install_check. Older shellcheck reports
+  # that as SC2317 on the body, newer as SC2329 on the function.
+  # shellcheck disable=SC2317,SC2329
+  demo_install() { touch "$TEST_TMP/demo-ran"; }
+  # Ctrl-D, which is what the message above points at, has to end the loop
+  # rather than spin on it.
+  CI="" install_check demo </dev/null >/dev/null
+
+  assert_missing "$TEST_TMP/demo-ran"
+}
+
+## ---------- command line ---------- ##
+
+# Runs install.sh as a program, against the sandbox $HOME and stubs.
+run_install_sh() {
+  bash "$REPO_ROOT/install.sh" "$@" </dev/null
+}
+
+test_help_prints_usage_and_changes_nothing() {
+  stub brew 'exit 0'
+  stub defaults 'exit 0'
+  local output
+  output="$(run_install_sh --help)" || fail "--help exited non-zero"
+
+  assert_contains "$output" "Usage: install.sh"
+  assert_contains "$output" "--dry-run"
+  assert_contains "$output" "--help"
+  assert_eq "" "$(stub_calls brew)" "--help ran brew"
+  assert_missing "$HOME/.zshrc"
+
+  assert_contains "$(run_install_sh -h)" "Usage: install.sh"
+}
+
+test_unknown_option_is_rejected() {
+  stub brew 'exit 0'
+  stub defaults 'exit 0'
+  local output status=0
+  output="$(run_install_sh --nope 2>&1)" || status=$?
+
+  assert_eq "2" "$status" "unknown option did not fail"
+  assert_contains "$output" "unknown option '--nope'"
+  assert_eq "" "$(stub_calls brew)" "an unknown option still ran brew"
+  assert_missing "$HOME/.zshrc"
+}
+
+test_dry_run_reports_the_work_without_doing_it() {
+  stub brew 'exit 0'
+  stub defaults 'exit 0'
+  stub gem 'exit 0'
+  local output
+  # CI is set so the optional dependency prompts are declined without input;
+  # the paths that always run are the ones worth checking here.
+  output="$(CI=1 run_install_sh --dry-run)" || fail "--dry-run exited non-zero"
+
+  assert_contains "$output" "[dry-run] brew update"
+  assert_contains "$output" "[dry-run] cp $REPO_ROOT/.zshrc $HOME/.zshrc"
+  assert_contains "$output" "[dry-run] defaults write com.apple.dock no-bouncing -bool true"
+  assert_contains "$output" "[dry-run] brew cleanup"
+
+  # Nothing that touches the machine may have run.
+  assert_eq "" "$(stub_calls brew)" "--dry-run ran brew"
+  assert_eq "" "$(stub_calls defaults)" "--dry-run wrote macOS defaults"
+  assert_missing "$HOME/.zshrc"
+  assert_missing "$HOME/scripts"
+}
+
+test_dry_run_lists_the_packages_it_would_install() {
+  stub_brew_missing
+  DRY_RUN=1
+  local output
+  output="$(packages_install)"
+
+  assert_contains "$output" "[dry-run] brew install git"
+  assert_contains "$output" "[dry-run] brew install --cask visual-studio-code"
+  # Read-only lookups still run, so the report can say what is already there.
+  assert_stub_called brew "list --formula git"
+  assert_stub_not_called brew "install git"
+}
+
+test_short_dry_run_flag_is_accepted() {
+  stub brew 'exit 0'
+  stub defaults 'exit 0'
+
+  assert_contains "$(CI=1 run_install_sh -n)" "[dry-run] brew update"
+  assert_missing "$HOME/.zshrc"
+}
+
 ## ---------- source_profile ---------- ##
 
 test_source_profile_installs_profile_and_scripts() {
@@ -485,6 +586,57 @@ test_python_install_stops_when_no_version_can_be_resolved() {
 
   assert_failure python_install
   assert_missing "$STUB_CALLS/shim-python3"
+}
+
+## ---------- dry run over the version managers ---------- ##
+
+test_dry_run_reports_the_ruby_install_without_running_it() {
+  stub_ruby_env
+  DRY_RUN=1
+  local output
+  output="$(ruby_install)"
+
+  assert_contains "$output" "[dry-run] brew install rbenv"
+  assert_contains "$output" "[dry-run] rbenv install --skip-existing 3.3.6"
+  assert_contains "$output" "[dry-run] rbenv global 3.3.6"
+  assert_contains "$output" "[dry-run] gem install bundler"
+
+  # Reading the available versions is fine; building one is not.
+  assert_stub_not_called rbenv "install --skip-existing 3.3.6"
+  assert_stub_not_called rbenv "global 3.3.6"
+  assert_missing "$STUB_CALLS/shim-gem"
+  assert_stub_not_called gem "install bundler"
+}
+
+test_dry_run_reports_the_python_install_without_running_it() {
+  stub_python_env
+  DRY_RUN=1
+  local output
+  output="$(python_install)"
+
+  assert_contains "$output" "[dry-run] pyenv install --skip-existing 3.3.6"
+  assert_contains "$output" "[dry-run] python3 -m pip install --upgrade pip"
+
+  assert_stub_not_called pyenv "install --skip-existing 3.3.6"
+  assert_missing "$STUB_CALLS/shim-python3"
+}
+
+test_dry_run_survives_a_version_manager_that_is_not_installed_yet() {
+  stub_brew_missing
+  # The `brew install rbenv` below is only printed, so a dry run reaches the
+  # version lookup with no rbenv to ask. The stub stands in for that machine; a
+  # real rbenv on the host would otherwise answer with a real version and make
+  # this test depend on where it runs.
+  stub rbenv 'exit 127'
+  DRY_RUN=1
+  local output
+  output="$(ruby_install)" || fail "ruby_install failed under --dry-run"
+
+  assert_contains "$output" "[dry-run] brew install rbenv"
+  # No version can be known in advance, so the step is named rather than
+  # resolved - and `rbenv root` is never asked for the shim path either.
+  assert_contains "$output" "[dry-run] rbenv install --skip-existing <latest stable>"
+  assert_stub_not_called rbenv "root"
 }
 
 ## ---------- main guard ---------- ##

@@ -5,11 +5,51 @@ set -euo pipefail
 # directory, so `~/somewhere/dotfiles/install.sh` works from anywhere.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+HOMEBREW_INSTALLER="https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh"
+
+# Set by --dry-run. Every command that changes the machine goes through run(),
+# so flipping this to 1 turns the whole script into a description of itself.
+DRY_RUN=0
+
+usage() {
+  cat <<'EOF'
+Usage: install.sh [options]
+
+Bootstraps a machine: installs Homebrew, offers each group of optional
+dependencies in turn, copies scripts/ and .zshrc into $HOME, and writes a few
+macOS defaults.
+
+Options:
+  -n, --dry-run  Print the commands that would change the machine, and run
+                 none of them.
+  -h, --help     Show this help and exit.
+
+Optional dependency groups, each prompted for separately: packages, ruby,
+python, node. Set CI to a non-empty value to decline all of them without
+being asked.
+EOF
+}
+
+# run <command...>: runs the command, or prints it when --dry-run is in effect.
+# Read-only commands (brew list, zsh -n) are called directly, so a dry run still
+# reports what is already installed.
+run() {
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "[dry-run] $*"
+    return 0
+  fi
+  "$@"
+}
+
 homebrew_install() {
   # Check for Homebrew, install if we don't have it
   if ! command -v brew &>/dev/null; then
     echo "Installing Homebrew..."
-    if ! /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; then
+    # Not run through run(): the installer is fetched inside a command
+    # substitution, which a dry run must not reach either.
+    if [[ $DRY_RUN -eq 1 ]]; then
+      echo "[dry-run] /bin/bash -c \"\$(curl -fsSL $HOMEBREW_INSTALLER)\""
+    elif ! /bin/bash -c "$(curl -fsSL "$HOMEBREW_INSTALLER")"; then
       echo "Error: Homebrew installation failed"
       return 1
     fi
@@ -22,13 +62,13 @@ homebrew_install() {
   fi
 
   # Update Homebrew recipes
-  brew update
+  run brew update
 }
 
 # Clean up Homebrew
 homebrew_cleanup() {
   echo "Cleaning up..."
-  brew cleanup
+  run brew cleanup
 }
 
 # General Brew Install
@@ -44,14 +84,14 @@ brew_install() {
     if [[ -n "$install_type" ]]; then
       if ! brew list --cask "$package" &>/dev/null; then
         echo "Installing $package..."
-        brew install --cask "$package"
+        run brew install --cask "$package"
       else
         echo "$package is already installed..."
       fi
     else
       if ! brew list --formula "$package" &>/dev/null; then
         echo "Installing $package..."
-        brew install "$package"
+        run brew install "$package"
       else
         echo "$package is already installed..."
       fi
@@ -86,8 +126,8 @@ source_profile() {
     fi
   fi
 
-  cp -R "$SCRIPT_DIR/scripts" "$HOME/"
-  cp "$SCRIPT_DIR/.$1" "$HOME/.$1"
+  run cp -R "$SCRIPT_DIR/scripts" "$HOME/"
+  run cp "$SCRIPT_DIR/.$1" "$HOME/.$1"
 
   echo "Run 'exec zsh' or open a new terminal to load .$1"
 }
@@ -99,16 +139,35 @@ install_check() {
     return 0
   fi
 
+  local yn choice=""
   echo "Do you wish to install $1 dependencies?"
+  # The answer is only recorded here; the install itself runs below, so the
+  # `|| true` on the loop cannot swallow a failure from ${1}_install.
   select yn in "Yes" "No"; do
     case $yn in
       Yes)
-        eval "${1}_install"
+        choice=yes
         break
         ;;
-      No) break ;;
+      No)
+        choice=no
+        break
+        ;;
+      # $yn is empty for anything that is not one of the listed numbers.
+      # Without this branch the prompt simply reappeared, with no hint that the
+      # answer was not understood or that Ctrl-D is the way out.
+      *) echo "'$REPLY' is not one of the choices. Enter 1 for Yes, 2 for No, or Ctrl-D to skip $1." ;;
     esac
-  done
+  done || true # select exits non-zero at end of input (Ctrl-D)
+
+  if [[ -z "$choice" ]]; then
+    echo "No answer given, skipping $1 dependencies..."
+    return 0
+  fi
+
+  if [[ "$choice" == "yes" ]]; then
+    eval "${1}_install"
+  fi
 }
 
 ## ---------- General Packages ---------- ##
@@ -157,6 +216,13 @@ version_to_install() {
 
   version="$(latest_stable_version "$manager")" || version=""
   if [[ -z "$version" ]]; then
+    # A dry run reaches here whenever $manager is not on the machine yet: the
+    # `brew install` that would have provided it was only printed. Report the
+    # step rather than failing on a version that cannot be known in advance.
+    if [[ $DRY_RUN -eq 1 ]]; then
+      printf '%s\n' "<latest stable>"
+      return 0
+    fi
     echo "Error: could not work out which $manager version to install" >&2
     return 1
   fi
@@ -174,24 +240,27 @@ ruby_install() {
 
   # scripts/rbenv only puts the shims on $PATH in a *new* shell, so without
   # this the gems below would go to the system Ruby - the very thing rbenv is
-  # here to avoid, and where `gem install` fails on permissions.
-  PATH="$(rbenv root)/shims:$PATH"
-  export PATH
+  # here to avoid, and where `gem install` fails on permissions. Skipped in a
+  # dry run, where `rbenv root` would fail because rbenv was never installed.
+  if [[ $DRY_RUN -eq 0 ]]; then
+    PATH="$(rbenv root)/shims:$PATH"
+    export PATH
+  fi
 
   local version
   version="$(version_to_install rbenv "${DOTFILES_RUBY_VERSION:-}")" || return 1
 
   echo "Installing Ruby $version..."
-  rbenv install --skip-existing "$version"
-  rbenv global "$version"
+  run rbenv install --skip-existing "$version"
+  run rbenv global "$version"
 
   RUBY_GEMS=(
     bundler
   )
   echo "Installing Ruby gems..."
-  gem install "${RUBY_GEMS[@]}"
+  run gem install "${RUBY_GEMS[@]}"
   # A freshly installed gem only gets an executable shim after a rehash.
-  rbenv rehash
+  run rbenv rehash
 }
 
 ## ---------- Python Dependencies -------- ##
@@ -204,24 +273,27 @@ python_install() {
   )
   brew_install "${PACKAGES[@]}"
 
-  # As with rbenv above: scripts/pyenv only takes effect in a new shell.
-  PATH="$(pyenv root)/shims:$PATH"
-  export PATH
+  # As with rbenv above: scripts/pyenv only takes effect in a new shell, and a
+  # dry run has no pyenv to ask for its root.
+  if [[ $DRY_RUN -eq 0 ]]; then
+    PATH="$(pyenv root)/shims:$PATH"
+    export PATH
+  fi
 
   local version
   version="$(version_to_install pyenv "${DOTFILES_PYTHON_VERSION:-}")" || return 1
 
   echo "Installing Python $version..."
-  pyenv install --skip-existing "$version"
-  pyenv global "$version"
+  run pyenv install --skip-existing "$version"
+  run pyenv global "$version"
 
   # A pyenv interpreter owns its own site-packages, so pip needs neither
   # --user (unsupported on Homebrew Python) nor a virtualenv of its own.
   echo "Ensuring pip is up to date..."
-  python3 -m pip install --upgrade pip
+  run python3 -m pip install --upgrade pip
   echo "Install virtualenv..."
-  python3 -m pip install virtualenv
-  pyenv rehash
+  run python3 -m pip install virtualenv
+  run pyenv rehash
 }
 
 ## ---------- Node Dependencies ---------- ##
@@ -285,20 +357,20 @@ configure_macos() {
   echo "Configuring macOS..."
 
   # Set fast key repeat rate
-  defaults write NSGlobalDomain KeyRepeat -int 2
+  run defaults write NSGlobalDomain KeyRepeat -int 2
 
   # Require password as soon as screensaver or sleep mode starts
-  defaults write com.apple.screensaver askForPassword -int 1
-  defaults write com.apple.screensaver askForPasswordDelay -int 0
+  run defaults write com.apple.screensaver askForPassword -int 1
+  run defaults write com.apple.screensaver askForPasswordDelay -int 0
 
   # Show filename extensions by default
-  defaults write NSGlobalDomain AppleShowAllExtensions -bool true
+  run defaults write NSGlobalDomain AppleShowAllExtensions -bool true
 
   # Show battery percentage (note: this may not work on macOS Ventura+ due to Control Center changes)
-  defaults write com.apple.menuextra.battery ShowPercent -string "YES" 2>/dev/null || true
+  run defaults write com.apple.menuextra.battery ShowPercent -string "YES" 2>/dev/null || true
 
   # Stop the bouncing icons
-  defaults write com.apple.dock no-bouncing -bool true
+  run defaults write com.apple.dock no-bouncing -bool true
 
   # The writes above only land when the app that owns the preference restarts,
   # so the Dock and Finder changes would otherwise appear not to have worked.
@@ -308,13 +380,34 @@ configure_macos() {
     echo "Running in CI mode, skipping app restarts..."
   else
     echo "Restarting Dock, Finder and SystemUIServer to apply the settings..."
-    killall Dock Finder SystemUIServer 2>/dev/null || true
+    run killall Dock Finder SystemUIServer 2>/dev/null || true
   fi
 }
 
 # Actual script
 main() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h | --help)
+        usage
+        return 0
+        ;;
+      -n | --dry-run)
+        DRY_RUN=1
+        shift
+        ;;
+      *)
+        echo "Error: unknown option '$1'" >&2
+        usage >&2
+        return 2
+        ;;
+    esac
+  done
+
   echo "Starting Bootstrapping..."
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "Dry run: the commands below are printed, not run."
+  fi
   homebrew_install
   install_check "packages"
   install_check "ruby"
