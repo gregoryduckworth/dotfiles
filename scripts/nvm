@@ -1,4 +1,10 @@
 # NVM
 export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+# Plain `[ ... ] && ...` would leave a non-zero status behind when nvm is not
+# installed, which aborts any caller that sources .zshrc under `set -e`.
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+  \. "$NVM_DIR/nvm.sh" # This loads nvm
+fi
+if [ -s "$NVM_DIR/bash_completion" ]; then
+  \. "$NVM_DIR/bash_completion" # This loads nvm bash_completion
+fi

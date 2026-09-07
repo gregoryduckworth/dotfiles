@@ -1,31 +1,75 @@
-name: Test with Homebrew
+name: CI
 
 on:
   push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
-    runs-on: macOS-latest
+  lint:
+    name: Lint and syntax
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Verify Homebrew
+      - name: Install shellcheck and zsh
         run: |
-          # Homebrew is already installed on GitHub Actions runners
-          brew update
+          sudo apt-get update
+          sudo apt-get install -y shellcheck zsh
 
-      - name: Install bash dependencies
+      - name: Shellcheck bash scripts
+        run: shellcheck install.sh update.sh
+
+      - name: Check bash syntax
         run: |
-          # Add any dependencies needed for your bash script here
-          # For example, if your script uses 'zip' command:
-          # brew install zip
+          for file in install.sh update.sh; do
+            echo "bash -n $file"
+            bash -n "$file"
+          done
 
-      - name: Validate script syntax
+      - name: Check zsh syntax
         run: |
-          chmod +x install.sh
-          bash -n install.sh
+          for file in .zshrc scripts/*; do
+            echo "zsh -n $file"
+            zsh -n "$file"
+          done
 
-      - name: Clean up Homebrew
-        run: brew cleanup
+      - name: Source profile in a sandbox home
+        run: |
+          # .zshrc is sourced by scripts that run under `set -e`, so every
+          # script in scripts/ must leave a zero exit status behind.
+          sandbox="$(mktemp -d)"
+          cp -R scripts "$sandbox/"
+          cp .zshrc "$sandbox/.zshrc"
+          HOME="$sandbox" zsh -c 'set -e; source ~/.zshrc'
+
+  install:
+    name: Run install.sh
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run install.sh against a sandbox home
+        run: |
+          sandbox="$(mktemp -d)"
+          echo "HOME_SANDBOX=$sandbox" >>"$GITHUB_ENV"
+          # CI is set by GitHub Actions, which puts install.sh in
+          # non-interactive mode and skips the optional dependency prompts.
+          HOME="$sandbox" ./install.sh
+
+      - name: Verify installed files
+        run: |
+          diff -r scripts "$HOME_SANDBOX/scripts"
+          diff .zshrc "$HOME_SANDBOX/.zshrc"

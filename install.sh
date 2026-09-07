@@ -73,8 +73,18 @@ source_profile() {
   cp -R scripts ~/
   cp ".$1" ~/."$1"
 
-  echo "Sourcing .$1..."
-  source ~/."$1"
+  # This script runs under bash, so sourcing the zsh profile here would both
+  # fail on zsh-only builtins and be thrown away when the script exits.
+  # Parse it instead, and let the user pick the profile up in a new shell.
+  if command -v zsh &>/dev/null; then
+    echo "Validating .$1..."
+    if ! zsh -n ~/."$1"; then
+      echo "Error: ~/.$1 is not valid zsh"
+      return 1
+    fi
+  fi
+
+  echo "Run 'exec zsh' or open a new terminal to load .$1"
 }
 
 install_check() {
