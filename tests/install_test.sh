@@ -187,7 +187,8 @@ test_dry_run_reports_the_work_without_doing_it() {
   output="$(CI=1 run_install_sh --dry-run)" || fail "--dry-run exited non-zero"
 
   assert_contains "$output" "[dry-run] brew update"
-  assert_contains "$output" "[dry-run] cp $REPO_ROOT/.zshrc $HOME/.zshrc"
+  assert_contains "$output" "[dry-run] ln -sfn $REPO_ROOT/scripts $HOME/scripts"
+  assert_contains "$output" "[dry-run] ln -sfn $REPO_ROOT/.zshrc $HOME/.zshrc"
   assert_contains "$output" "[dry-run] defaults write com.apple.dock no-bouncing -bool true"
   assert_contains "$output" "[dry-run] brew cleanup"
 
@@ -196,6 +197,20 @@ test_dry_run_reports_the_work_without_doing_it() {
   assert_eq "" "$(stub_calls defaults)" "--dry-run wrote macOS defaults"
   assert_missing "$HOME/.zshrc"
   assert_missing "$HOME/scripts"
+}
+
+test_dry_run_does_not_move_a_real_zshrc_aside() {
+  stub brew 'exit 0'
+  stub defaults 'exit 0'
+  # A dry run that backed the user's profile up would have changed the machine
+  # while claiming not to, so the mv goes through run() like everything else.
+  echo "# mine" >"$HOME/.zshrc"
+  local output
+  output="$(CI=1 run_install_sh --dry-run)" || fail "--dry-run exited non-zero"
+
+  assert_contains "$output" "[dry-run] mv $HOME/.zshrc"
+  assert_eq "# mine" "$(cat "$HOME/.zshrc")"
+  assert_eq "" "$(find "$HOME" -maxdepth 1 -name '*.backup-*')" "--dry-run created a backup"
 }
 
 test_dry_run_lists_the_packages_it_would_install() {
@@ -221,12 +236,20 @@ test_short_dry_run_flag_is_accepted() {
 
 ## ---------- source_profile ---------- ##
 
-test_source_profile_installs_profile_and_scripts() {
+# Lists the backups link_into_checkout left at the top of $HOME.
+home_backups() {
+  find "$HOME" -maxdepth 1 -name '*.backup-*' | sed "s|^$HOME/||" | sort
+}
+
+test_source_profile_links_profile_and_scripts() {
   # prove the script does not depend on the caller's working directory
   cd "$TEST_TMP" || fail "could not enter $TEST_TMP"
   source_profile zshrc >/dev/null
 
-  assert_file "$HOME/.zshrc"
+  # Links into the checkout rather than copies of it: that is what makes
+  # `git pull` the whole update, with no second copy left to go stale.
+  assert_symlink "$HOME/scripts" "$REPO_ROOT/scripts"
+  assert_symlink "$HOME/.zshrc" "$REPO_ROOT/.zshrc"
   assert_file "$HOME/scripts/git"
   diff "$REPO_ROOT/.zshrc" "$HOME/.zshrc" || fail "installed .zshrc differs"
   diff -r "$REPO_ROOT/scripts" "$HOME/scripts" || fail "installed scripts differ"
@@ -236,17 +259,46 @@ test_source_profile_is_idempotent() {
   source_profile zshrc >/dev/null
   source_profile zshrc >/dev/null
 
-  # A second run must refresh ~/scripts in place, not nest a copy inside it.
+  # `ln` without -n follows the link installed by the first run and leaves the
+  # second one inside the checkout's own scripts directory.
+  assert_symlink "$HOME/scripts" "$REPO_ROOT/scripts"
   assert_missing "$HOME/scripts/scripts"
-  diff -r "$REPO_ROOT/scripts" "$HOME/scripts" || fail "installed scripts differ"
+  assert_eq "" "$(home_backups)" "a re-run backed up its own links"
 }
 
-test_source_profile_removes_nothing_the_user_owns() {
+test_source_profile_repoints_a_stale_link() {
+  # Links from an older checkout are ours, so they are repointed silently
+  # rather than kept as backups.
+  ln -sfn "$TEST_TMP/old-checkout/scripts" "$HOME/scripts"
+  ln -sfn "$TEST_TMP/old-checkout/.zshrc" "$HOME/.zshrc"
+  source_profile zshrc >/dev/null
+
+  assert_symlink "$HOME/scripts" "$REPO_ROOT/scripts"
+  assert_symlink "$HOME/.zshrc" "$REPO_ROOT/.zshrc"
+  assert_eq "" "$(home_backups)" "a stale link was backed up instead of repointed"
+}
+
+test_source_profile_backs_up_a_real_zshrc() {
+  # A profile the user wrote themselves must never be clobbered.
+  echo "# mine" >"$HOME/.zshrc"
+  source_profile zshrc >/dev/null
+
+  assert_symlink "$HOME/.zshrc" "$REPO_ROOT/.zshrc"
+  assert_contains "$(home_backups)" ".zshrc.backup-"
+  assert_eq "# mine" "$(cat "$HOME"/.zshrc.backup-*)"
+}
+
+test_source_profile_backs_up_a_real_scripts_directory() {
   mkdir -p "$HOME/scripts"
   echo "mine" >"$HOME/scripts/local"
   source_profile zshrc >/dev/null
 
-  assert_file "$HOME/scripts/local"
+  # A real directory left in place would swallow the new link instead of being
+  # replaced by it, so it is moved aside - and it is the user's, so it is kept.
+  assert_symlink "$HOME/scripts" "$REPO_ROOT/scripts"
+  assert_missing "$HOME/scripts/scripts"
+  assert_contains "$(home_backups)" "scripts.backup-"
+  assert_eq "mine" "$(cat "$HOME"/scripts.backup-*/local)"
 }
 
 test_source_profile_keeps_the_local_override() {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for .zshrc, the profile that install.sh and update.sh drop into $HOME.
+# Tests for .zshrc, the profile install.sh links into $HOME.
 #
 # The single-quoted arguments below are zsh snippets run in a child shell, so
 # they are deliberately not expanded by bash (SC2016); $HOME and friends are set

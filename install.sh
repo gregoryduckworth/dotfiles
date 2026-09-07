@@ -16,7 +16,7 @@ usage() {
 Usage: install.sh [options]
 
 Bootstraps a machine: installs Homebrew, offers each group of optional
-dependencies in turn, copies scripts/ and .zshrc into $HOME, and writes a few
+dependencies in turn, symlinks scripts/ and .zshrc into $HOME, and writes a few
 macOS defaults.
 
 Options:
@@ -99,9 +99,29 @@ brew_install() {
   done
 }
 
-# Create and source the file
+# link_into_checkout <target> <link>
+#
+# Points <link> at <target>, so the installed dotfiles are the checkout rather
+# than copies of it and `git pull` is the whole update.
+link_into_checkout() {
+  local target="$1" link="$2" backup
+
+  # A symlink here is one we installed, so it is replaced silently. Anything
+  # else is the user's own file and is moved aside instead of clobbered.
+  if [[ -e "$link" && ! -L "$link" ]]; then
+    backup="$link.backup-$(date +%Y%m%d%H%M%S)"
+    echo "Moving existing $link aside to $backup..."
+    run mv "$link" "$backup"
+  fi
+
+  # -n stops ln from following an existing symlink to a directory and nesting
+  # the new link inside the target rather than replacing the link.
+  run ln -sfn "$target" "$link"
+}
+
+# Link the profile and scripts into $HOME
 source_profile() {
-  echo "Creating .$1 file..."
+  echo "Linking .$1 and scripts into \$HOME..."
 
   # Check if source files exist
   if [[ ! -f "$SCRIPT_DIR/.$1" ]]; then
@@ -117,7 +137,7 @@ source_profile() {
   # This script runs under bash, so sourcing the zsh profile here would both
   # fail on zsh-only builtins and be thrown away when the script exits.
   # Parse it instead, and let the user pick the profile up in a new shell.
-  # Checked before copying so a broken profile never lands in $HOME.
+  # Checked before linking so a broken profile is never what $HOME points at.
   if command -v zsh &>/dev/null; then
     echo "Validating .$1..."
     if ! zsh -n "$SCRIPT_DIR/.$1"; then
@@ -126,8 +146,8 @@ source_profile() {
     fi
   fi
 
-  run cp -R "$SCRIPT_DIR/scripts" "$HOME/"
-  run cp "$SCRIPT_DIR/.$1" "$HOME/.$1"
+  link_into_checkout "$SCRIPT_DIR/scripts" "$HOME/scripts"
+  link_into_checkout "$SCRIPT_DIR/.$1" "$HOME/.$1"
 
   echo "Run 'exec zsh' or open a new terminal to load .$1"
 }
