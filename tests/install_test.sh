@@ -193,7 +193,8 @@ test_source_profile_rejects_invalid_zsh() {
 
 test_configure_macos_writes_expected_defaults() {
   stub defaults 'exit 0'
-  configure_macos >/dev/null
+  stub killall 'exit 0'
+  CI="" configure_macos >/dev/null
 
   assert_stub_called defaults "write NSGlobalDomain KeyRepeat -int 2"
   assert_stub_called defaults "write com.apple.screensaver askForPassword -int 1"
@@ -205,7 +206,39 @@ test_configure_macos_survives_a_failing_defaults_write() {
   # The battery percentage write is expected to fail on recent macOS.
   # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
   stub defaults '[[ "$2" == com.apple.menuextra.battery ]] && exit 1; exit 0'
-  configure_macos >/dev/null
+  stub killall 'exit 0'
+  CI="" configure_macos >/dev/null
+}
+
+# The Dock and Finder only pick the new preferences up when they restart.
+test_configure_macos_restarts_the_apps_that_own_the_settings() {
+  stub defaults 'exit 0'
+  stub killall 'exit 0'
+  CI="" configure_macos >/dev/null
+
+  assert_stub_called killall "Dock Finder SystemUIServer"
+}
+
+test_configure_macos_survives_killall_finding_nothing_to_restart() {
+  stub defaults 'exit 0'
+  # killall exits non-zero when an app is not running, which must not abort the
+  # bootstrap.
+  stub killall 'exit 1'
+  CI="" configure_macos >/dev/null
+}
+
+test_configure_macos_does_not_restart_apps_in_ci() {
+  stub defaults 'exit 0'
+  stub killall 'exit 0'
+  CI=1 configure_macos >/dev/null
+
+  assert_eq "" "$(stub_calls killall)" "CI restarted the Dock"
+}
+
+# `history -c` used to sit at the end of configure_macos, where it only cleared
+# the empty history of the non-interactive bash running the script.
+test_configure_macos_does_not_touch_shell_history() {
+  assert_not_contains "$(cat "$REPO_ROOT/install.sh")" "history -c"
 }
 
 ## ---------- main guard ---------- ##
