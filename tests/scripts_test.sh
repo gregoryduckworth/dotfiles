@@ -183,4 +183,214 @@ test_browserstack_exports_placeholders_and_chrome() {
     "$(zsh_script browserstack 'echo $CHROME')"
 }
 
+## ---------- scripts/history ---------- ##
+
+test_history_is_saved_to_a_file() {
+  skip_unless_command zsh
+  # zsh writes no history at all until HISTFILE is set, so this is the setting
+  # the rest of the file depends on.
+  assert_eq "$HOME/.zsh_history" "$(zsh_script history 'echo $HISTFILE')"
+  assert_eq "50000" "$(zsh_script history 'echo $HISTSIZE')"
+  # SAVEHIST smaller than HISTSIZE silently drops the oldest entries on exit.
+  assert_eq "50000" "$(zsh_script history 'echo $SAVEHIST')"
+}
+
+test_history_options_are_set() {
+  skip_unless_command zsh
+  local option
+  for option in sharehistory histignorealldups histignorespace histreduceblanks; do
+    assert_eq "on" "$(zsh_script history "echo \$options[$option]")" "$option"
+  done
+}
+
+## ---------- scripts/completion ---------- ##
+
+test_completion_runs_compinit() {
+  skip_unless_command zsh
+  # compdef only exists once compinit has run, so it is the tell that the
+  # completion system is actually initialised rather than merely autoloadable.
+  assert_eq "compdef: function" "$(zsh_script completion 'whence -w compdef')"
+}
+
+test_completion_loads_the_menu_selection_module() {
+  skip_unless_command zsh
+  # Without zsh/complist the `menu select` style below has no keymap to drive.
+  assert_eq "loaded" \
+    "$(zsh_script completion 'zmodload -e zsh/complist && echo loaded')"
+}
+
+test_completion_styles_are_set() {
+  skip_unless_command zsh
+  local styles
+  styles="$(zsh_script completion 'zstyle -L ":completion:*"')"
+
+  assert_contains "$styles" "matcher-list 'm:{a-z}={A-Z}'"
+  assert_contains "$styles" "menu select"
+}
+
+test_completion_matches_case_insensitively_in_one_direction_only() {
+  skip_unless_command zsh
+  local matcher
+  matcher="$(zsh_script completion 'zstyle -L ":completion:*" matcher-list')"
+
+  # 'm:{a-z}={A-Z}' widens lowercase to uppercase. The two-way spelling
+  # 'm:{a-zA-Z}={A-Za-z}' would also let a typed capital match a lowercase
+  # name, which makes an explicit capital meaningless.
+  assert_not_contains "$matcher" "a-zA-Z"
+}
+
+test_completion_keeps_its_dump_out_of_home() {
+  skip_unless_command zsh
+  zsh_script completion || fail "scripts/completion left a non-zero exit status"
+
+  assert_file "$HOME/.cache/zsh/zcompdump-$(zsh -c 'echo $ZSH_VERSION')"
+  assert_missing "$HOME/.zcompdump"
+}
+
+test_completion_is_quiet() {
+  skip_unless_command zsh
+  local errors
+  # compinit stops to ask about completion files with the wrong permissions
+  # unless it is told to skip them, which would hang a non-interactive shell.
+  errors="$(zsh_script completion 2>&1 >/dev/null)" ||
+    fail "scripts/completion failed"
+  assert_eq "" "$errors" "scripts/completion wrote to stderr"
+}
+
+## ---------- scripts/editor ---------- ##
+
+# A $PATH holding nothing but zsh, so the editor probing below sees exactly the
+# editors a test puts in front of it rather than whatever the machine has.
+path_without_editors() {
+  mkdir -p "$TEST_TMP/onlyzsh"
+  ln -sf "$(command -v zsh)" "$TEST_TMP/onlyzsh/zsh"
+  echo "$TEST_TMP/onlyzsh"
+}
+
+test_editor_prefers_the_first_installed_candidate() {
+  skip_unless_command zsh
+  local bare
+  bare="$(path_without_editors)"
+  ln -sf /bin/echo "$bare/vim"
+
+  assert_eq "vim" "$(PATH="$bare" zsh_script editor 'echo $EDITOR')"
+
+  # nvim outranks vim, so adding it has to change the answer.
+  ln -sf /bin/echo "$bare/nvim"
+  assert_eq "nvim" "$(PATH="$bare" zsh_script editor 'echo $EDITOR')"
+}
+
+test_editor_falls_back_to_vi() {
+  skip_unless_command zsh
+  # Every macOS and Linux box has vi, so an unresolvable $EDITOR is worse than
+  # guessing it.
+  assert_eq "vi" "$(PATH="$(path_without_editors)" zsh_script editor 'echo $EDITOR')"
+}
+
+test_editor_keeps_an_editor_already_in_the_environment() {
+  skip_unless_command zsh
+  # A deliberate choice from the terminal or an earlier script must survive.
+  assert_eq "code -w" "$(EDITOR='code -w' zsh_script editor 'echo $EDITOR')"
+  assert_eq "code -w" "$(EDITOR='code -w' zsh_script editor 'echo $VISUAL')"
+}
+
+test_editor_and_visual_agree_and_are_exported() {
+  skip_unless_command zsh
+  assert_eq "same" "$(zsh_script editor '[[ $EDITOR == $VISUAL ]] && echo same')"
+  # Exported, or the tools that shell out to an editor never see them.
+  assert_eq "yes" "$(zsh_script editor '[[ ${(t)EDITOR} == *export* ]] && echo yes')"
+  assert_eq "yes" "$(zsh_script editor '[[ ${(t)VISUAL} == *export* ]] && echo yes')"
+}
+
+test_editor_leaves_no_loop_variable_behind() {
+  skip_unless_command zsh
+  assert_eq "unset" \
+    "$(zsh_script editor '[[ -z ${candidate+set} ]] && echo unset')"
+}
+
+## ---------- scripts/navigation ---------- ##
+
+test_navigation_options_are_set() {
+  skip_unless_command zsh
+  # AUTO_CD itself only fires in an interactive shell, so the option is all
+  # there is to assert from here.
+  assert_eq "on" "$(zsh_script navigation 'echo $options[autocd]')"
+  assert_eq "on" "$(zsh_script navigation 'echo $options[autopushd]')"
+  assert_eq "on" "$(zsh_script navigation 'echo $options[pushdignoredups]')"
+  assert_eq "20" "$(zsh_script navigation 'echo $DIRSTACKSIZE')"
+}
+
+test_cd_pushes_the_old_directory_onto_the_stack() {
+  skip_unless_command zsh
+  mkdir -p "$TEST_TMP/a" "$TEST_TMP/b"
+
+  assert_eq "yes" "$(zsh_script navigation \
+    "cd '$TEST_TMP/a'; previous=\$PWD; cd '$TEST_TMP/b'; [[ \$dirstack[1] == \$previous ]] && echo yes")"
+}
+
+test_bouncing_between_two_directories_does_not_fill_the_stack() {
+  skip_unless_command zsh
+  mkdir -p "$TEST_TMP/a" "$TEST_TMP/b"
+
+  # Five hops between the same two directories, so without PUSHD_IGNORE_DUPS
+  # the stack would hold five entries instead of the two distinct ones.
+  assert_eq "2" "$(zsh_script navigation \
+    "cd '$TEST_TMP/a'; cd '$TEST_TMP/b'; cd '$TEST_TMP/a'; cd '$TEST_TMP/b'; cd '$TEST_TMP/a'; echo \${#dirstack}")"
+}
+
+## ---------- scripts/zsh-plugins ---------- ##
+
+# Writes stand-in plugin files under a fake Homebrew prefix and echoes the
+# prefix. Each one records that it was sourced, in order, so the tests can
+# assert on both the fact and the ordering without installing the real thing.
+fake_brew_plugins() {
+  local prefix="$TEST_TMP/brew" name
+  for name in zsh-autosuggestions zsh-syntax-highlighting; do
+    mkdir -p "$prefix/share/$name"
+    echo "print -r -- $name >>'$TEST_TMP/sourced'" >"$prefix/share/$name/$name.zsh"
+  done
+  echo "$prefix"
+}
+
+test_plugins_are_sourced_from_the_homebrew_prefix() {
+  skip_unless_command zsh
+  local prefix sourced
+  prefix="$(fake_brew_plugins)"
+
+  HOMEBREW_PREFIX="$prefix" zsh_script zsh-plugins ||
+    fail "scripts/zsh-plugins failed with the plugins installed"
+
+  sourced="$(sort "$TEST_TMP/sourced")"
+  assert_contains "$sourced" "zsh-autosuggestions"
+  assert_contains "$sourced" "zsh-syntax-highlighting"
+}
+
+test_syntax_highlighting_is_sourced_after_autosuggestions() {
+  skip_unless_command zsh
+  local prefix
+  prefix="$(fake_brew_plugins)"
+
+  # zsh-syntax-highlighting's install notes require it to come last, so that
+  # the widgets it wraps include the ones autosuggestions defines.
+  HOMEBREW_PREFIX="$prefix" zsh_script zsh-plugins
+  assert_eq "zsh-syntax-highlighting" "$(tail -n 1 "$TEST_TMP/sourced")"
+}
+
+test_plugins_are_skipped_when_not_installed() {
+  skip_unless_command zsh
+  local errors
+  # An empty prefix, so neither plugin is there to source. A shell on a machine
+  # that has not run install.sh still has to start.
+  mkdir -p "$TEST_TMP/empty/share"
+  errors="$(HOMEBREW_PREFIX="$TEST_TMP/empty" zsh_script zsh-plugins 2>&1 >/dev/null)" ||
+    fail "scripts/zsh-plugins failed without the plugins installed"
+  assert_eq "" "$errors" "scripts/zsh-plugins complained about the missing plugins"
+}
+
+test_plugins_leave_no_helper_variable_behind() {
+  skip_unless_command zsh
+  assert_eq "unset" \
+    "$(zsh_script zsh-plugins '[[ -z ${zsh_plugin_dir+set} ]] && echo unset')"
+}
+
 run_tests "$@"

@@ -1,0 +1,13 @@
+# Directory navigation.
+
+# A bare directory name means cd. Saves the two characters on the traversal
+# that makes up most of what gets typed at a prompt.
+setopt AUTO_CD
+# Every cd pushes the old directory onto the stack, so `cd -<TAB>` offers where
+# you have been and `cd -2` goes back two hops.
+setopt AUTO_PUSHD
+# Bouncing between two directories otherwise fills the stack with alternating
+# copies of the pair.
+setopt PUSHD_IGNORE_DUPS
+# Twenty hops back is more than enough, and it keeps `cd -<TAB>` readable.
+DIRSTACKSIZE=20

@@ -1,0 +1,22 @@
+# $EDITOR and $VISUAL. Neither is set by default, so git, crontab and anything
+# else that shells out to an editor is left guessing.
+
+# An editor already in the environment was chosen deliberately - by the
+# terminal that spawned this shell, or by a file sourced before this one - so
+# leave it alone.
+if [[ -z "${EDITOR:-}" ]]; then
+  # First one actually installed wins; vi is the fallback below because it is
+  # the one editor every macOS and Linux box has.
+  for candidate in nvim vim vi; do
+    if (( $+commands[$candidate] )); then
+      EDITOR="$candidate"
+      break
+    fi
+  done
+  unset candidate
+fi
+
+export EDITOR="${EDITOR:-vi}"
+# The same editor for both slots. Tools disagree about which variable to read,
+# and a split between them only ever shows up as a surprise.
+export VISUAL="$EDITOR"

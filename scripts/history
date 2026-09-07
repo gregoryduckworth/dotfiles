@@ -1,0 +1,18 @@
+# Shell history. Out of the box zsh keeps 30 lines for the session, has no
+# HISTFILE and a SAVEHIST of 0, so nothing survives closing the terminal.
+HISTFILE="$HOME/.zsh_history"
+HISTSIZE=50000
+SAVEHIST=50000
+
+# Every shell appends as it goes and picks up what the others wrote, instead of
+# the last window to close overwriting the rest.
+setopt SHARE_HISTORY
+# Re-running a command moves it to the end rather than adding a duplicate, so
+# the history stays a list of distinct commands.
+setopt HIST_IGNORE_ALL_DUPS
+# A command typed with a leading space is not recorded: the escape hatch for
+# anything with a secret in it.
+setopt HIST_IGNORE_SPACE
+# Store commands with their whitespace tidied, so two spellings of the same
+# command count as the duplicate they are.
+setopt HIST_REDUCE_BLANKS

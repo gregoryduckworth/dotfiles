@@ -1,0 +1,35 @@
+# Completion. Nothing else in this profile calls compinit, and zsh does not
+# call it for you, so without this file completion never gets past the built-in
+# filename fallback.
+#
+# This file has to be sourced before scripts/nvm, which loads nvm's
+# bash_completion on top of the compinit machinery. .zshrc sources ~/scripts in
+# glob order, and "completion" sorts before "nvm", which is what keeps that
+# true; renaming either file would break it.
+
+# Arrow-key menu selection lives in this module and it has to be loaded before
+# compinit, which is what wires the menuselect keymap up.
+zmodload zsh/complist
+
+# Keep the dump under the cache directory rather than dropping a dotfile in
+# $HOME, and key it on the zsh version so an upgrade rebuilds it instead of
+# reusing a dump built for a different build.
+ZSH_COMPDUMP="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompdump-${ZSH_VERSION}"
+mkdir -p "${ZSH_COMPDUMP:h}"
+
+autoload -Uz compinit
+# -i skips completion files with the wrong ownership or permissions. Without
+# it compinit stops to ask what to do about them, which hangs any shell that
+# sources this profile without a human in front of it.
+compinit -i -d "$ZSH_COMPDUMP"
+
+# Case-insensitive matching, but only in the widening direction: "dow" finds
+# Downloads, while an explicit capital still has to match one.
+zstyle ':completion:*' matcher-list 'm:{a-z}={A-Z}'
+# Offer the candidates as a list you can walk with the arrow keys, rather than
+# printing them and making you type more of the word.
+zstyle ':completion:*' menu select
+# Group the list by what the candidates are (files, aliases, builtins) and
+# label each group, which is most of the value of the list on a wide screen.
+zstyle ':completion:*' group-name ''
+zstyle ':completion:*:descriptions' format '%F{244}%d%f'
