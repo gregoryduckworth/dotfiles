@@ -1,6 +1,7 @@
-# Load other script files
-for file in ~/scripts/*; do
-  source $file
+# Load other script files. The (N) glob qualifier expands to nothing when
+# ~/scripts is missing, instead of leaving the literal pattern to source.
+for file in ~/scripts/*(N); do
+  source "$file"
 done
 
-alias sz='source ~/.zprofile'
+alias sz='source ~/.zshrc'

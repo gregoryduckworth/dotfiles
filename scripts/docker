@@ -1,4 +1,4 @@
-alias dr='docker run --rm -it $(docker build -q .)'d
+alias dr='docker run --rm -it $(docker build -q .)'
 alias drs='docker stop $(docker ps -a -q)'
 alias drd='docker rm $(docker ps -a -q)'
 alias drp='docker system prune'
