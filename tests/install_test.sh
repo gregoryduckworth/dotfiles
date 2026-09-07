@@ -198,6 +198,95 @@ test_source_profile_rejects_invalid_zsh() {
   assert_missing "$HOME/.zshrc"
 }
 
+## ---------- node_install / nvm_script_path ---------- ##
+
+# Stands in for a real nvm.sh: defines `nvm` as the shell function it actually
+# is, which is why node_install has to source anything at all, and records the
+# calls where assert_stub_called can find them.
+fake_nvm_script() {
+  mkdir -p "$1"
+  cat >"$1/nvm.sh" <<'NVM_SH'
+nvm() {
+  printf '%s\n' "$*" >>"$STUB_CALLS/nvm"
+}
+NVM_SH
+}
+
+test_node_install_installs_nvm_and_nothing_else() {
+  stub_brew_missing
+  fake_nvm_script "$HOME/.nvm"
+  node_install >/dev/null
+
+  assert_stub_called brew "install nvm"
+  # A brew node would race nvm's shims for $PATH, and brew's npm is only an
+  # alias for the node formula, so it would install node a second time.
+  assert_stub_not_called brew "install node"
+  assert_stub_not_called brew "install npm"
+}
+
+test_node_install_installs_the_lts_and_makes_it_the_default() {
+  stub_brew_missing
+  fake_nvm_script "$HOME/.nvm"
+  node_install >/dev/null
+
+  assert_stub_called nvm "install --lts"
+  assert_stub_called nvm "alias default lts/*"
+}
+
+test_node_install_loads_nvm_from_the_homebrew_prefix() {
+  NVM_TEST_PREFIX="$TEST_TMP/homebrew/opt/nvm"
+  export NVM_TEST_PREFIX
+  fake_nvm_script "$NVM_TEST_PREFIX"
+  # brew reports nvm as missing, installs it, then hands out its prefix.
+  # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
+  stub brew '[[ "$1 $2" == list* ]] && exit 1; [[ "$1" == --prefix ]] && echo "$NVM_TEST_PREFIX"; exit 0'
+  node_install >/dev/null
+
+  assert_stub_called nvm "install --lts"
+  # The formula does not create $NVM_DIR, and nvm needs it to exist before it
+  # can install a runtime into it.
+  [[ -d "$HOME/.nvm" ]] || fail "expected \$NVM_DIR at $HOME/.nvm"
+}
+
+test_node_install_fails_when_nvm_cannot_be_loaded() {
+  # Nothing installs for real in the sandbox, so nvm.sh is nowhere to be found.
+  stub_brew_missing
+
+  assert_failure node_install
+}
+
+test_nvm_script_path_prefers_an_existing_nvm_dir() {
+  NVM_DIR="$HOME/.nvm"
+  NVM_TEST_PREFIX="$TEST_TMP/homebrew/opt/nvm"
+  export NVM_DIR NVM_TEST_PREFIX
+  fake_nvm_script "$NVM_DIR"
+  fake_nvm_script "$NVM_TEST_PREFIX"
+  # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
+  stub brew 'echo "$NVM_TEST_PREFIX"'
+
+  assert_eq "$NVM_DIR/nvm.sh" "$(nvm_script_path)"
+}
+
+test_nvm_script_path_falls_back_to_the_homebrew_prefix() {
+  NVM_DIR="$HOME/.nvm"
+  NVM_TEST_PREFIX="$TEST_TMP/homebrew/opt/nvm"
+  export NVM_DIR NVM_TEST_PREFIX
+  fake_nvm_script "$NVM_TEST_PREFIX"
+  # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
+  stub brew 'echo "$NVM_TEST_PREFIX"'
+
+  assert_eq "$NVM_TEST_PREFIX/nvm.sh" "$(nvm_script_path)"
+}
+
+test_nvm_script_path_fails_when_nvm_sh_is_missing() {
+  NVM_DIR="$HOME/.nvm"
+  export NVM_DIR
+  # A brew that does not know the formula, as on a machine without nvm.
+  stub brew 'exit 1'
+
+  assert_failure nvm_script_path
+}
+
 ## ---------- configure_macos ---------- ##
 
 test_configure_macos_writes_expected_defaults() {

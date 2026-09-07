@@ -122,6 +122,38 @@ test_nvm_is_loaded_when_installed() {
   assert_eq "yes" "$(zsh_script nvm 'echo $NVM_COMPLETION_LOADED')"
 }
 
+test_nvm_is_loaded_from_the_homebrew_prefix() {
+  skip_unless_command zsh
+  # `brew install nvm` keeps nvm.sh under its own prefix, with the completion
+  # under etc/, and leaves $NVM_DIR to hold the runtimes only.
+  local prefix="$TEST_TMP/homebrew"
+  mkdir -p "$prefix/opt/nvm/etc/bash_completion.d"
+  echo 'export NVM_LOADED=brew' >"$prefix/opt/nvm/nvm.sh"
+  echo 'export NVM_COMPLETION_LOADED=brew' \
+    >"$prefix/opt/nvm/etc/bash_completion.d/nvm"
+
+  assert_eq "brew" \
+    "$(HOMEBREW_PREFIX="$prefix" zsh_script nvm 'echo $NVM_LOADED')"
+  assert_eq "brew" \
+    "$(HOMEBREW_PREFIX="$prefix" zsh_script nvm 'echo $NVM_COMPLETION_LOADED')"
+  # $NVM_DIR still points at where nvm keeps the runtimes it installs.
+  assert_eq "$HOME/.nvm" \
+    "$(HOMEBREW_PREFIX="$prefix" zsh_script nvm 'echo $NVM_DIR')"
+}
+
+test_nvm_prefers_the_copy_in_nvm_dir() {
+  skip_unless_command zsh
+  # Both flavours installed: the one in $NVM_DIR is the one nvm's own installer
+  # put there, so it wins.
+  local prefix="$TEST_TMP/homebrew"
+  mkdir -p "$HOME/.nvm" "$prefix/opt/nvm"
+  echo 'export NVM_LOADED=nvm_dir' >"$HOME/.nvm/nvm.sh"
+  echo 'export NVM_LOADED=brew' >"$prefix/opt/nvm/nvm.sh"
+
+  assert_eq "nvm_dir" \
+    "$(HOMEBREW_PREFIX="$prefix" zsh_script nvm 'echo $NVM_LOADED')"
+}
+
 test_nvm_is_skipped_when_not_installed() {
   skip_unless_command zsh
   assert_eq "$HOME/.nvm" "$(zsh_script nvm 'echo $NVM_DIR')"
