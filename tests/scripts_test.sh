@@ -62,6 +62,9 @@ test_github_aliases_wrap_the_expected_commands() {
   assert_eq "gcm='git commit -m'" "$(zsh_script github 'alias gcm')"
   assert_eq "gs='git status'" "$(zsh_script github 'alias gs')"
   assert_eq "ghpr='gh pr status'" "$(zsh_script github 'alias ghpr')"
+  # Branch cleanup needs branching logic, so it is a function rather than an
+  # alias; the tests below exercise what it does.
+  assert_eq "gbc: function" "$(zsh_script github 'whence -w gbc')"
 }
 
 test_every_github_alias_targets_git_or_gh() {
@@ -76,6 +79,145 @@ test_every_github_alias_targets_git_or_gh() {
       *) fail "github alias $name does not run git or gh: ${definition:-<undefined>}" ;;
     esac
   done < <(sed -n "s/^alias \([a-z]*\)=.*/\1/p" "$REPO_ROOT/scripts/github")
+}
+
+test_gbc_replaces_a_stale_gbc_alias() {
+  skip_unless_command zsh
+  # gbc used to be an alias, and zsh refuses to define a function over one, so
+  # re-sourcing this file in a shell left over from before the change has to
+  # clear the alias rather than die with a parse error.
+  assert_eq "gbc: function" "$(zsh -c "set -e
+    alias gbc='git branch -d \$(git branch --merged=master)'
+    source '$REPO_ROOT/scripts/github'
+    whence -w gbc" 2>&1)"
+}
+
+# Builds a repository whose default branch is main, with an origin to prune
+# against, and prints its path. The branches cover the ways branch cleanup can
+# go wrong:
+#
+#   main               the default branch, and the one to measure against
+#   master             a stale decoy, left behind the default branch on purpose
+#                      so that "merged into main" and "merged into master" are
+#                      different sets of branches
+#   feat-master-thing  merged, and only into master; its name contains the name
+#                      of a long-lived branch
+#   feat-main-thing    merged into main only; its name likewise
+#   other              merged into main only
+#   unmerged           has a commit of its own, so it is not merged anywhere
+gbc_repo() {
+  local origin="$TEST_TMP/origin" work="$TEST_TMP/work"
+
+  git init --quiet --bare "$origin"
+  git init --quiet "$work"
+  git -C "$work" symbolic-ref HEAD refs/heads/main
+  git_commit "$work" "first"
+  git -C "$work" remote add origin "$origin"
+  git -C "$work" push --quiet -u origin main
+  git -C "$work" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+
+  git -C "$work" branch master
+  git -C "$work" branch feat-master-thing
+  git_commit "$work" "second"
+  git -C "$work" branch feat-main-thing
+  git -C "$work" branch other
+  git -C "$work" checkout --quiet -b unmerged
+  git_commit "$work" "third"
+  git -C "$work" checkout --quiet main
+
+  printf '%s\n' "$work"
+}
+
+git_commit() {
+  git -C "$1" -c user.name=Test -c user.email=test@example.com \
+    commit --quiet --allow-empty -m "$2"
+}
+
+# The branches left behind, as a single space-separated line.
+gbc_branches() {
+  git -C "$1" branch --format='%(refname:short)' | paste -sd' ' -
+}
+
+test_gbc_deletes_the_branches_merged_into_the_default_branch() {
+  skip_unless_command zsh
+  skip_unless_command git
+  local repo
+  repo="$(gbc_repo)"
+
+  zsh_script github "cd '$repo' && gbc" >/dev/null 2>&1 ||
+    fail "gbc failed: $(zsh_script github "cd '$repo' && gbc" 2>&1)"
+
+  # Everything merged into main goes, whatever its name; the default branch,
+  # the stale "master" and the unmerged branch stay.
+  assert_eq "main master unmerged" "$(gbc_branches "$repo")"
+}
+
+test_gbc_uses_the_default_branch_rather_than_master() {
+  skip_unless_command zsh
+  skip_unless_command git
+  local repo
+  repo="$(gbc_repo)"
+  # "other" is merged into main but not into master, so it is only ever cleaned
+  # up by working out what the default branch is instead of assuming "master".
+  assert_not_contains \
+    " $(git -C "$repo" branch --merged master --format='%(refname:short)' | paste -sd' ' -) " \
+    " other " "the fixture no longer distinguishes main from master"
+
+  zsh_script github "cd '$repo' && gbc" >/dev/null 2>&1 || fail "gbc failed"
+
+  assert_not_contains " $(gbc_branches "$repo") " " other "
+}
+
+test_gbc_deletes_the_branches_before_it_prunes() {
+  skip_unless_command zsh
+  skip_unless_command git
+  local repo real_git calls delete_line prune_line
+  real_git="$(command -v git)"
+  repo="$(gbc_repo)"
+  # A git that records its arguments and then does the real work, so the order
+  # of the calls can be asserted: backgrounding the delete with a single "&"
+  # raced it against the fetch instead of sequencing the two.
+  stub git "exec '$real_git' \"\$@\""
+
+  zsh_script github "cd '$repo' && gbc" >/dev/null 2>&1 || fail "gbc failed"
+
+  calls="$(stub_calls git)"
+  delete_line="$(printf '%s\n' "$calls" | grep -n '^branch -d ' | tail -1 | cut -d: -f1)" || true
+  prune_line="$(printf '%s\n' "$calls" | grep -n '^fetch --prune$' | head -1 | cut -d: -f1)" || true
+
+  [[ -n "$delete_line" ]] || fail "gbc deleted no branch; calls were: [$calls]"
+  [[ -n "$prune_line" ]] || fail "gbc never pruned; calls were: [$calls]"
+  [[ "$prune_line" -gt "$delete_line" ]] ||
+    fail "gbc pruned before it finished deleting; calls were: [$calls]"
+}
+
+test_gbc_falls_back_to_a_local_default_branch() {
+  skip_unless_command zsh
+  skip_unless_command git
+  local repo="$TEST_TMP/solo"
+  # No remote, so there is no origin/HEAD to read the default branch from and
+  # nothing to prune.
+  git init --quiet "$repo"
+  git -C "$repo" symbolic-ref HEAD refs/heads/main
+  git_commit "$repo" "first"
+  git -C "$repo" branch spike
+
+  zsh_script github "cd '$repo' && gbc" >/dev/null 2>&1 ||
+    fail "gbc failed without a remote"
+
+  assert_eq "main" "$(gbc_branches "$repo")"
+}
+
+test_gbc_gives_up_outside_a_repository() {
+  skip_unless_command zsh
+  skip_unless_command git
+  local plain="$TEST_TMP/plain" errors
+  mkdir -p "$plain"
+
+  assert_failure zsh_script github "cd '$plain' && gbc"
+  # And says why, rather than dying silently on the first failing git call.
+  errors="$(zsh_script github "cd '$plain' && gbc" 2>&1 >/dev/null)" || true
+  assert_contains "$errors" "gbc: cannot work out which branch to compare against"
 }
 
 ## ---------- scripts/git ---------- ##
