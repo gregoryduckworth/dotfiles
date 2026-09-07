@@ -7,12 +7,19 @@ Install script for useful items
 ## Usage
 
 ```sh
-./install.sh   # bootstrap a machine
-./update.sh    # re-copy scripts/ and .zshrc into $HOME
+./install.sh             # bootstrap a machine
+./install.sh --dry-run   # print what it would do, and do none of it
+./install.sh --help      # usage
+./update.sh              # re-copy scripts/ and .zshrc into $HOME
 ```
 
 Both scripts resolve paths against the checkout, so they can be run from
 anywhere, and both are safe to re-run.
+
+`install.sh` prompts for each group of optional dependencies (packages, ruby,
+python, node); set `CI` to a non-empty value to decline all of them without
+being asked. Every command that changes the machine goes through a `run`
+wrapper, so `--dry-run` reports the whole bootstrap without touching anything.
 
 The Ruby and Python steps install `rbenv` and `pyenv` and then build a language
 version with them, so gems and pip packages never land in the system or
