@@ -516,6 +516,19 @@ test_completion_keeps_its_dump_out_of_home() {
   assert_missing "$HOME/.zcompdump"
 }
 
+test_completion_leaves_an_existing_compinit_alone() {
+  skip_unless_command zsh
+  # oh-my-zsh runs compinit from scripts/oh-my-zsh, which .zshrc sources
+  # first. A second compinit here would rebuild the same dump for nothing, so
+  # the file has to notice that one has already run - compdef being the tell.
+  zsh -c "set -e
+    compdef() { : }
+    source '$REPO_ROOT/scripts/completion'" ||
+    fail "scripts/completion failed with compinit already run"
+
+  assert_missing "$HOME/.cache/zsh/zcompdump-$(zsh -c 'echo $ZSH_VERSION')"
+}
+
 test_completion_is_quiet() {
   skip_unless_command zsh
   local errors
@@ -524,6 +537,97 @@ test_completion_is_quiet() {
   errors="$(zsh_script completion 2>&1 >/dev/null)" ||
     fail "scripts/completion failed"
   assert_eq "" "$errors" "scripts/completion wrote to stderr"
+}
+
+## ---------- scripts/oh-my-zsh ---------- ##
+
+# See tests/profile_test.sh for the same stand-in: a file where
+# scripts/oh-my-zsh expects one, recording that it was sourced.
+fake_oh_my_zsh() {
+  mkdir -p "$HOME/.oh-my-zsh"
+  cat >"$HOME/.oh-my-zsh/oh-my-zsh.sh" <<'EOF'
+OMZ_LOADED=yes
+EOF
+}
+
+test_oh_my_zsh_sources_the_installed_framework() {
+  skip_unless_command zsh
+  fake_oh_my_zsh
+
+  assert_eq "yes" "$(zsh_script oh-my-zsh 'echo $OMZ_LOADED')"
+  assert_eq "$HOME/.oh-my-zsh" "$(zsh_script oh-my-zsh 'echo $ZSH')"
+}
+
+test_oh_my_zsh_honours_an_existing_zsh_directory() {
+  skip_unless_command zsh
+  # $ZSH is oh-my-zsh's own name for its install directory, so a machine that
+  # keeps it somewhere else must not be sent back to ~/.oh-my-zsh.
+  mkdir -p "$TEST_TMP/elsewhere"
+  echo 'OMZ_LOADED=yes' >"$TEST_TMP/elsewhere/oh-my-zsh.sh"
+
+  assert_eq "yes" \
+    "$(ZSH="$TEST_TMP/elsewhere" zsh_script oh-my-zsh 'echo $OMZ_LOADED')"
+}
+
+test_oh_my_zsh_loads_no_theme() {
+  skip_unless_command zsh
+  fake_oh_my_zsh
+  # scripts/git sets $PROMPT, and it is sourced after this file, so a theme
+  # here would be read and then thrown away.
+  assert_eq "" "$(zsh_script oh-my-zsh 'echo $ZSH_THEME')"
+}
+
+test_oh_my_zsh_enables_the_expected_plugins() {
+  skip_unless_command zsh
+  fake_oh_my_zsh
+  local plugins
+  plugins="$(zsh_script oh-my-zsh 'echo $plugins')"
+
+  assert_eq "brew docker gh" "$plugins"
+  # scripts/github owns the git aliases; the git plugin would define its own
+  # set under the same names, most of them shadowed and the rest not.
+  assert_not_contains "$plugins" "git "
+}
+
+test_oh_my_zsh_does_not_prompt_to_update() {
+  skip_unless_command zsh
+  fake_oh_my_zsh
+  # The default mode asks, which puts a prompt in front of the first command
+  # typed into a new terminal.
+  assert_contains "$(zsh_script oh-my-zsh 'zstyle -L ":omz:update"')" "mode reminder"
+}
+
+test_oh_my_zsh_shares_the_completion_dump() {
+  skip_unless_command zsh
+  fake_oh_my_zsh
+  # Left unset, oh-my-zsh drops its own dump in $HOME and the machine ends up
+  # building two: this one and scripts/completion's.
+  assert_eq "$HOME/.cache/zsh/zcompdump-$(zsh -c 'echo $ZSH_VERSION')" \
+    "$(zsh_script oh-my-zsh 'echo $ZSH_COMPDUMP')"
+  assert_missing "$HOME/.zcompdump"
+}
+
+test_oh_my_zsh_is_a_no_op_when_not_installed() {
+  skip_unless_command zsh
+  assert_missing "$HOME/.oh-my-zsh"
+  local errors
+
+  # Same bargain as scripts/zsh-plugins: no oh-my-zsh means a plain shell,
+  # not an error on every prompt.
+  errors="$(zsh_script oh-my-zsh 2>&1 >/dev/null)" ||
+    fail "scripts/oh-my-zsh failed without oh-my-zsh installed"
+  assert_eq "" "$errors" "scripts/oh-my-zsh complained about the missing install"
+}
+
+test_oh_my_zsh_survives_a_framework_that_exits_non_zero() {
+  skip_unless_command zsh
+  mkdir -p "$HOME/.oh-my-zsh"
+  # oh-my-zsh.sh ends on its last plugin, and the stock brew plugin returns
+  # non-zero on a machine with no Homebrew. The profile is sourced under
+  # errexit, so that must not take the shell down with it.
+  echo 'false' >"$HOME/.oh-my-zsh/oh-my-zsh.sh"
+
+  zsh_script oh-my-zsh || fail "scripts/oh-my-zsh propagated oh-my-zsh's status"
 }
 
 ## ---------- scripts/editor ---------- ##

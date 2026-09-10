@@ -1,6 +1,6 @@
-# Completion. Nothing else in this profile calls compinit, and zsh does not
-# call it for you, so without this file completion never gets past the built-in
-# filename fallback.
+# Completion. Nothing else in this profile calls compinit, unless oh-my-zsh is
+# installed and did it first, and zsh does not call it for you, so without this
+# file completion never gets past the built-in filename fallback.
 #
 # This file has to be sourced before scripts/nvm, which loads nvm's
 # bash_completion on top of the compinit machinery. .zshrc sources ~/scripts in
@@ -13,15 +13,22 @@ zmodload zsh/complist
 
 # Keep the dump under the cache directory rather than dropping a dotfile in
 # $HOME, and key it on the zsh version so an upgrade rebuilds it instead of
-# reusing a dump built for a different build.
-ZSH_COMPDUMP="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompdump-${ZSH_VERSION}"
+# reusing a dump built for a different build. scripts/oh-my-zsh names the same
+# path, and is sourced first when it has an oh-my-zsh to load, so honour a
+# value that is already set rather than pointing the two at different dumps.
+ZSH_COMPDUMP="${ZSH_COMPDUMP:-${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompdump-${ZSH_VERSION}}"
 mkdir -p "${ZSH_COMPDUMP:h}"
 
-autoload -Uz compinit
-# -i skips completion files with the wrong ownership or permissions. Without
-# it compinit stops to ask what to do about them, which hangs any shell that
-# sources this profile without a human in front of it.
-compinit -i -d "$ZSH_COMPDUMP"
+# compdef exists only once compinit has run, so it is the tell that oh-my-zsh
+# already initialised the completion system from scripts/oh-my-zsh. Running
+# compinit a second time would rebuild the same dump for nothing.
+if (( ! $+functions[compdef] )); then
+  autoload -Uz compinit
+  # -i skips completion files with the wrong ownership or permissions. Without
+  # it compinit stops to ask what to do about them, which hangs any shell that
+  # sources this profile without a human in front of it.
+  compinit -i -d "$ZSH_COMPDUMP"
+fi
 
 # Case-insensitive matching, but only in the widening direction: "dow" finds
 # Downloads, while an explicit capital still has to match one.

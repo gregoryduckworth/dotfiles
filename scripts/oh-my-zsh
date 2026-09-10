@@ -1,0 +1,47 @@
+# oh-my-zsh. install.sh clones it to ~/.oh-my-zsh; a machine without it gets a
+# plain shell rather than an error on every prompt, the same way
+# scripts/zsh-plugins treats its two formulae.
+#
+# This file is the one exception to "every file in ~/scripts is sourced by the
+# loop in .zshrc": .zshrc sources it by name first and the loop skips it.
+# oh-my-zsh brings aliases, options and completions of its own, and every one
+# of them is meant to lose to the files here - `gp` is `git pull` because
+# scripts/github says so, not `git push` because the git plugin does.
+ZSH="${ZSH:-$HOME/.oh-my-zsh}"
+
+if [[ -r "$ZSH/oh-my-zsh.sh" ]]; then
+  # No theme. scripts/git owns $PROMPT, and a theme loaded here would only be
+  # overwritten a moment later, having cost a file read to do it.
+  ZSH_THEME=""
+
+  # Completion and aliases for tools this repo already installs. `git` is
+  # deliberately not on the list: scripts/github owns the git aliases, so the
+  # plugin's hundred-odd would be shadowed where the two overlap and left
+  # standing where they do not, which is two spellings of the same thing to
+  # keep straight for no gain.
+  plugins=(brew docker gh)
+
+  # The default mode stops and asks whether to update, which puts a prompt in
+  # front of the first command in a new terminal. `reminder` only mentions it;
+  # `omz update` then runs when it suits.
+  zstyle ':omz:update' mode reminder
+
+  # oh-my-zsh runs compinit itself, and when this is unset it picks a dump
+  # file in $HOME. scripts/completion keeps the dump under the cache directory
+  # instead, so name the same path here and have one dump rather than two.
+  # The definition is repeated there rather than shared: each file in
+  # ~/scripts has to stand on its own, since a machine may have either.
+  ZSH_COMPDUMP="${ZSH_COMPDUMP:-${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompdump-${ZSH_VERSION}}"
+  mkdir -p "${ZSH_COMPDUMP:h}"
+  # Also from scripts/completion, and for the same reason it is at the top of
+  # that file: the menuselect keymap is wired up by compinit, so the module
+  # has to be loaded before the compinit below runs.
+  zmodload zsh/complist
+
+  # oh-my-zsh.sh ends on whatever its last plugin left behind, and the stock
+  # plugins return non-zero when the tool they wrap is not installed - the
+  # brew plugin on a machine with no Homebrew, for one. The profile is sourced
+  # under errexit by the tests and by anything running a non-interactive login
+  # shell, so that status must not escape.
+  source "$ZSH/oh-my-zsh.sh" || true
+fi
