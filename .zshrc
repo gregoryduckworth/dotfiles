@@ -1,7 +1,15 @@
+# Before the loop below, which skips it: oh-my-zsh's aliases and options have
+# to lose to the files in ~/scripts.
+if [[ -r ~/scripts/oh-my-zsh ]]; then
+  source ~/scripts/oh-my-zsh
+fi
+
 # Load other script files. The (N) glob qualifier expands to nothing when
 # ~/scripts is missing, instead of leaving the literal pattern to source.
 for file in ~/scripts/*(N); do
-  source "$file"
+  if [[ "${file:t}" != oh-my-zsh ]]; then
+    source "$file"
+  fi
 done
 
 alias sz='source ~/.zshrc'

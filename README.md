@@ -15,6 +15,12 @@ Install script for useful items
 `install.sh` resolves paths against the checkout, so it can be run from
 anywhere, and it is safe to re-run.
 
+It installs [oh-my-zsh](https://github.com/ohmyzsh/ohmyzsh) into
+`~/.oh-my-zsh` - a plain `git clone`, because the other half of oh-my-zsh's own
+installer is writing a `.zshrc` and running `chsh`, and this repo owns the
+first and does not ask for the second. A clone is all `omz update` needs, and
+a machine that already has one is left alone.
+
 It does not copy anything into `$HOME`; it symlinks:
 
 ```
@@ -86,16 +92,45 @@ order, so the filenames decide the order.
 | `homebrew` | Homebrew's curl on `$PATH` |
 | `navigation` | `AUTO_CD` and the directory stack |
 | `nvm` | nvm and its completion |
+| `oh-my-zsh` | oh-my-zsh, when installed |
 | `rbenv` | rbenv and its shims |
 | `zsh-plugins` | `zsh-autosuggestions` and `zsh-syntax-highlighting`, when installed |
 
-Two of the filenames are load-bearing, and `tests/profile_test.sh` guards both:
-`completion` has to sort before `nvm`, whose completion is loaded on top of
-`compinit`, and `zsh-plugins` has to sort last, because
+`oh-my-zsh` is the exception: `.zshrc` sources it by name before the loop, and
+the loop then skips it. See below.
+
+Two of the remaining filenames are load-bearing, and `tests/profile_test.sh`
+guards both: `completion` has to sort before `nvm`, whose completion is loaded
+on top of `compinit`, and `zsh-plugins` has to sort last, because
 `zsh-syntax-highlighting` needs to see the widgets everything else defines.
 
 The plugins in `zsh-plugins` are optional - `install.sh` installs them with the
 general packages, and a shell without them starts normally.
+
+### Oh My Zsh
+Sourced before everything else in `scripts/`, because it brings aliases,
+options and completions of its own and the files here are meant to win over
+them: `gp` is `git pull` because `scripts/github` says so, not `git push`
+because oh-my-zsh's git plugin does.
+
+It is configured, not adopted wholesale:
+
+- **No theme.** `scripts/git` owns `$PROMPT`, so a theme would only be read
+  and then overwritten.
+- **`plugins=(brew docker gh)`** - completion and aliases for tools this repo
+  already installs. `git` is deliberately absent: `scripts/github` owns the git
+  aliases, and the plugin's own hundred-odd would be shadowed where the two
+  overlap and left standing where they do not.
+- **`zstyle ':omz:update' mode reminder`** - the default stops and asks, which
+  puts a prompt in front of the first command in a new terminal. Run
+  `omz update` when it suits.
+- **One completion dump.** oh-my-zsh runs `compinit` itself and would otherwise
+  write its own dump into `$HOME`, so `scripts/oh-my-zsh` points it at the same
+  cache-directory path `scripts/completion` uses, and `scripts/completion`
+  skips the second `compinit` when oh-my-zsh has already run one.
+
+Like `zsh-plugins`, it is optional at shell startup: a machine without
+`~/.oh-my-zsh` gets a plain shell rather than an error on every prompt.
 
 ### Nvm
 nvm owns the node runtime, the way `rbenv` and `pyenv` own theirs: `install.sh`
@@ -143,7 +178,7 @@ the real machine or run a real `brew`, `defaults` or `sudo`.
 | --- | --- |
 | `tests/install_test.sh` | `install.sh` functions: `brew bundle` installs, the CI/interactive prompt, the symlinks into `$HOME` and their backup and failure paths, macOS defaults |
 | `tests/brewfile_test.sh` | the Brewfiles: every one is installed by `install.sh`, and every entry is a directive `brew bundle` understands |
-| `tests/profile_test.sh` | `.zshrc`: loading `scripts/`, sourcing `~/.zshrc.local` last, and coping with a missing or empty `~/scripts` |
+| `tests/profile_test.sh` | `.zshrc`: loading `scripts/`, loading oh-my-zsh first and exactly once, sourcing `~/.zshrc.local` last, and coping with a missing or empty `~/scripts` |
 | `tests/scripts_test.sh` | each file in `scripts/`: parses, exits cleanly, and defines the expected aliases, exports and functions |
 
 `tests/helpers/framework.sh` is the (dependency-free) test framework: a test
@@ -157,5 +192,5 @@ Every push to `main` and every pull request runs `.github/workflows/ci.yml`:
   tests.
 - **Tests** (Ubuntu and macOS) - `./tests/run.sh`.
 - **Run install.sh** (macOS) - runs `install.sh` end to end against a throwaway
-  `$HOME`, twice, then checks the installed paths are symlinks into the checkout
-  and diffs them against the repo.
+  `$HOME`, twice, then checks the installed paths are symlinks into the checkout,
+  that oh-my-zsh was cloned, and diffs the linked files against the repo.

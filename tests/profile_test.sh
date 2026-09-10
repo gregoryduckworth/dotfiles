@@ -27,6 +27,7 @@ test_profile_loads_every_script() {
   assert_eq "compdef: function" "$(zsh_profile 'whence -w compdef')" "scripts/completion"
   assert_eq "0" "$(zsh_profile '[[ -n $EDITOR ]]; echo $?')" "scripts/editor"
   assert_eq "on" "$(zsh_profile 'echo $options[autocd]')" "scripts/navigation"
+  assert_contains "$(zsh_profile 'echo $ZSH')" ".oh-my-zsh" "scripts/oh-my-zsh"
 }
 
 # The order ~/scripts is sourced in, one filename per line. .zshrc uses a plain
@@ -104,6 +105,57 @@ test_profile_can_be_sourced_twice() {
   install_profile_into_home
 
   zsh_profile 'source ~/.zshrc' || fail ".zshrc is not safe to re-source"
+}
+
+## ---------- oh-my-zsh ---------- ##
+
+# A stand-in for ~/.oh-my-zsh: enough to find and source, recording each load
+# and defining an alias for the profile to override.
+fake_oh_my_zsh() {
+  mkdir -p "$HOME/.oh-my-zsh"
+  cat >"$HOME/.oh-my-zsh/oh-my-zsh.sh" <<'EOF'
+print -r -- loaded >>"$HOME/omz-loads"
+alias gs='oh-my-zsh git status'
+alias omz-only='oh-my-zsh'
+EOF
+}
+
+test_profile_loads_oh_my_zsh() {
+  skip_unless_command zsh
+  install_profile_into_home
+  fake_oh_my_zsh
+
+  assert_eq "0" "$(zsh_profile 'alias omz-only >/dev/null; echo $?')"
+}
+
+test_scripts_override_oh_my_zsh() {
+  skip_unless_command zsh
+  install_profile_into_home
+  fake_oh_my_zsh
+
+  # Why .zshrc sources oh-my-zsh first: this repo's aliases have to win.
+  assert_eq "gs='git status'" "$(zsh_profile 'alias gs')"
+}
+
+test_profile_loads_oh_my_zsh_exactly_once() {
+  skip_unless_command zsh
+  install_profile_into_home
+  fake_oh_my_zsh
+  # .zshrc sources it by name and then loops over the same directory, so the
+  # loop has to skip it.
+  zsh_profile || fail ".zshrc failed with oh-my-zsh installed"
+
+  assert_eq "1" "$(wc -l <"$HOME/omz-loads" | tr -d '[:blank:]')"
+}
+
+test_profile_is_quiet_with_oh_my_zsh_installed() {
+  skip_unless_command zsh
+  install_profile_into_home
+  fake_oh_my_zsh
+  local errors
+
+  errors="$(zsh_profile 2>&1 >/dev/null)" || fail ".zshrc failed"
+  assert_eq "" "$errors" ".zshrc wrote to stderr with oh-my-zsh installed"
 }
 
 ## ---------- ~/.zshrc.local ---------- ##

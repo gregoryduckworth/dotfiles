@@ -75,6 +75,44 @@ test_homebrew_cleanup_runs_brew_cleanup() {
   assert_stub_called brew "cleanup"
 }
 
+## ---------- oh_my_zsh_install ---------- ##
+
+test_oh_my_zsh_install_clones_it_when_missing() {
+  stub git 'exit 0'
+  oh_my_zsh_install >/dev/null
+
+  assert_stub_called git \
+    "clone --depth=1 https://github.com/ohmyzsh/ohmyzsh.git $HOME/.oh-my-zsh"
+}
+
+test_oh_my_zsh_install_leaves_an_existing_install_alone() {
+  stub git 'exit 0'
+  # A re-run must not clone over a checkout `omz update` has been updating.
+  mkdir -p "$HOME/.oh-my-zsh"
+  oh_my_zsh_install >/dev/null
+
+  assert_eq "" "$(stub_calls git)" "git ran with oh-my-zsh already installed"
+}
+
+test_oh_my_zsh_install_propagates_a_failing_clone() {
+  stub git 'exit 1'
+
+  assert_failure oh_my_zsh_install
+  assert_missing "$HOME/.oh-my-zsh"
+}
+
+test_dry_run_reports_the_oh_my_zsh_clone_without_running_it() {
+  stub git 'exit 0'
+  DRY_RUN=1
+  local output
+  output="$(oh_my_zsh_install)"
+
+  assert_contains "$output" \
+    "[dry-run] git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh.git $HOME/.oh-my-zsh"
+  assert_eq "" "$(stub_calls git)" "--dry-run cloned oh-my-zsh"
+  assert_missing "$HOME/.oh-my-zsh"
+}
+
 ## ---------- install_check ---------- ##
 
 test_install_check_skips_prompt_in_ci() {
@@ -176,6 +214,7 @@ test_dry_run_reports_the_work_without_doing_it() {
   output="$(CI=1 run_install_sh --dry-run)" || fail "--dry-run exited non-zero"
 
   assert_contains "$output" "[dry-run] brew update"
+  assert_contains "$output" "[dry-run] git clone --depth=1 $OH_MY_ZSH_REPO $HOME/.oh-my-zsh"
   assert_contains "$output" "[dry-run] ln -sfn $REPO_ROOT/scripts $HOME/scripts"
   assert_contains "$output" "[dry-run] ln -sfn $REPO_ROOT/.zshrc $HOME/.zshrc"
   assert_contains "$output" "[dry-run] defaults write com.apple.dock no-bouncing -bool true"
@@ -186,6 +225,7 @@ test_dry_run_reports_the_work_without_doing_it() {
   assert_eq "" "$(stub_calls defaults)" "--dry-run wrote macOS defaults"
   assert_missing "$HOME/.zshrc"
   assert_missing "$HOME/scripts"
+  assert_missing "$HOME/.oh-my-zsh"
 }
 
 test_dry_run_does_not_move_a_real_zshrc_aside() {

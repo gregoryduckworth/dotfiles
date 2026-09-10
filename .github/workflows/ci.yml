@@ -118,6 +118,9 @@ jobs:
           done
           [ ! -e "$HOME_SANDBOX/scripts/scripts" ] ||
             { echo "a re-run nested a link inside scripts/"; exit 1; }
+          # Cloned, not linked, and the re-run must have left it alone.
+          [ -f "$HOME_SANDBOX/.oh-my-zsh/oh-my-zsh.sh" ] ||
+            { echo "oh-my-zsh was not installed"; exit 1; }
           # diff follows the symlinks it is handed, so this compares contents.
           diff -r scripts "$HOME_SANDBOX/scripts"
           diff .zshrc "$HOME_SANDBOX/.zshrc"

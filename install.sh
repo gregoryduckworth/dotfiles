@@ -6,6 +6,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 HOMEBREW_INSTALLER="https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh"
+OH_MY_ZSH_REPO="https://github.com/ohmyzsh/ohmyzsh.git"
 
 # Set by --dry-run. Every command that changes the machine goes through run(),
 # so flipping this to 1 turns the whole script into a description of itself.
@@ -16,8 +17,8 @@ usage() {
 Usage: install.sh [options]
 
 Bootstraps a machine: installs Homebrew, offers each group of optional
-dependencies in turn, symlinks scripts/ and .zshrc into $HOME, and writes a few
-macOS defaults.
+dependencies in turn, installs oh-my-zsh, symlinks scripts/ and .zshrc into
+$HOME, and writes a few macOS defaults.
 
 Options:
   -n, --dry-run  Print the commands that would change the machine, and run
@@ -84,6 +85,23 @@ brew_bundle() {
 
   echo "Installing packages from $1..."
   run brew bundle --file="$brewfile"
+}
+
+# Cloned rather than run through oh-my-zsh's own installer, which also writes
+# a .zshrc and runs chsh. A clone is all `omz update` needs.
+oh_my_zsh_install() {
+  local dir="${ZSH:-$HOME/.oh-my-zsh}"
+
+  if [[ -d "$dir" ]]; then
+    echo "oh-my-zsh is already installed at $dir"
+    return 0
+  fi
+
+  echo "Installing oh-my-zsh..."
+  if ! run git clone --depth=1 "$OH_MY_ZSH_REPO" "$dir"; then
+    echo "Error: oh-my-zsh installation failed"
+    return 1
+  fi
 }
 
 # link_into_checkout <target> <link>
@@ -393,6 +411,7 @@ main() {
   install_check "ruby"
   install_check "python"
   install_check "node"
+  oh_my_zsh_install
   source_profile "zshrc"
   configure_macos
   homebrew_cleanup
