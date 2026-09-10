@@ -14,14 +14,12 @@ zmodload zsh/complist
 # Keep the dump under the cache directory rather than dropping a dotfile in
 # $HOME, and key it on the zsh version so an upgrade rebuilds it instead of
 # reusing a dump built for a different build. scripts/oh-my-zsh names the same
-# path, and is sourced first when it has an oh-my-zsh to load, so honour a
-# value that is already set rather than pointing the two at different dumps.
+# path, so honour a value that is already set.
 ZSH_COMPDUMP="${ZSH_COMPDUMP:-${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompdump-${ZSH_VERSION}}"
 mkdir -p "${ZSH_COMPDUMP:h}"
 
 # compdef exists only once compinit has run, so it is the tell that oh-my-zsh
-# already initialised the completion system from scripts/oh-my-zsh. Running
-# compinit a second time would rebuild the same dump for nothing.
+# already did this.
 if (( ! $+functions[compdef] )); then
   autoload -Uz compinit
   # -i skips completion files with the wrong ownership or permissions. Without

@@ -1,9 +1,5 @@
-# oh-my-zsh, before everything else. It defines aliases, options and
-# completions of its own, and the files in ~/scripts are meant to win over
-# them, so it cannot wait for the loop below to reach it in glob order. Its
-# configuration lives in ~/scripts/oh-my-zsh with the rest of the profile all
-# the same, which is why the loop then has to skip the one file it has
-# already sourced.
+# Before the loop below, which skips it: oh-my-zsh's aliases and options have
+# to lose to the files in ~/scripts.
 if [[ -r ~/scripts/oh-my-zsh ]]; then
   source ~/scripts/oh-my-zsh
 fi

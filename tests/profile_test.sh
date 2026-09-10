@@ -109,10 +109,8 @@ test_profile_can_be_sourced_twice() {
 
 ## ---------- oh-my-zsh ---------- ##
 
-# A stand-in for ~/.oh-my-zsh: enough for scripts/oh-my-zsh to find and source,
-# recording each load and defining an alias for the profile to override. The
-# real thing is several hundred files and a git clone away, and neither is
-# needed to pin down how it is wired in.
+# A stand-in for ~/.oh-my-zsh: enough to find and source, recording each load
+# and defining an alias for the profile to override.
 fake_oh_my_zsh() {
   mkdir -p "$HOME/.oh-my-zsh"
   cat >"$HOME/.oh-my-zsh/oh-my-zsh.sh" <<'EOF'
@@ -135,8 +133,7 @@ test_scripts_override_oh_my_zsh() {
   install_profile_into_home
   fake_oh_my_zsh
 
-  # The whole reason .zshrc sources oh-my-zsh before ~/scripts: an alias this
-  # repo defines has to beat the one oh-my-zsh ships under the same name.
+  # Why .zshrc sources oh-my-zsh first: this repo's aliases have to win.
   assert_eq "gs='git status'" "$(zsh_profile 'alias gs')"
 }
 
@@ -144,9 +141,8 @@ test_profile_loads_oh_my_zsh_exactly_once() {
   skip_unless_command zsh
   install_profile_into_home
   fake_oh_my_zsh
-  # .zshrc sources ~/scripts/oh-my-zsh by name and then loops over the same
-  # directory, so the loop has to skip it. Sourcing oh-my-zsh twice re-runs
-  # compinit and re-applies every plugin.
+  # .zshrc sources it by name and then loops over the same directory, so the
+  # loop has to skip it.
   zsh_profile || fail ".zshrc failed with oh-my-zsh installed"
 
   assert_eq "1" "$(wc -l <"$HOME/omz-loads" | tr -d '[:blank:]')"

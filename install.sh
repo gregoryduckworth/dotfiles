@@ -87,10 +87,8 @@ brew_bundle() {
   run brew bundle --file="$brewfile"
 }
 
-# oh-my-zsh, cloned rather than run through its own installer. The other half
-# of that installer is writing a .zshrc and running chsh, and this repo owns
-# the first and does not ask for the second; a clone is all `omz update`
-# needs. scripts/oh-my-zsh loads it, and skips itself when it is not there.
+# Cloned rather than run through oh-my-zsh's own installer, which also writes
+# a .zshrc and runs chsh. A clone is all `omz update` needs.
 oh_my_zsh_install() {
   local dir="${ZSH:-$HOME/.oh-my-zsh}"
 

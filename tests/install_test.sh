@@ -87,8 +87,7 @@ test_oh_my_zsh_install_clones_it_when_missing() {
 
 test_oh_my_zsh_install_leaves_an_existing_install_alone() {
   stub git 'exit 0'
-  # Re-running the bootstrap must not clone over a checkout the user has been
-  # updating with `omz update`.
+  # A re-run must not clone over a checkout `omz update` has been updating.
   mkdir -p "$HOME/.oh-my-zsh"
   oh_my_zsh_install >/dev/null
 
