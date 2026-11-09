@@ -1,5 +1,5 @@
 # oh-my-zsh, cloned to ~/.oh-my-zsh by install.sh. Skipped when it is not
-# there, so a machine without it still gets a working shell.
+# there, so a machine without it still gets a working (if plain) shell.
 #
 # .zshrc sources this file before the loop over ~/scripts, and the loop skips
 # it: oh-my-zsh's aliases and options have to lose to the files here.
@@ -8,16 +8,29 @@ ZSH="${ZSH:-$HOME/.oh-my-zsh}"
 if [[ -r "$ZSH/oh-my-zsh.sh" ]]; then
   # The prompt, including the git branch. Nothing in ~/scripts sets $PROMPT.
   ZSH_THEME="robbyrussell"
-  # git: the standard git aliases (gst, gaa, gl, gp, gbda, ...).
-  plugins=(git brew docker gh)
+  # git and docker: the standard aliases (gst, gaa, gl, gp, gbda, dr, dps, ...).
+  # nvm, pyenv and rbenv: load the version managers install.sh sets up.
+  plugins=(git brew docker gh nvm pyenv rbenv)
   # The default mode asks before updating, on the first prompt of a new shell.
   zstyle ':omz:update' mode reminder
 
-  # oh-my-zsh runs compinit itself, and drops its dump in $HOME when this is
-  # unset. The same path scripts/completion uses, so there is only one dump.
+  # Completions for everything Homebrew installs (brew, docker, colima, ...).
+  # The brew plugin adds this directory too, but only after oh-my-zsh has run
+  # compinit, which is too late for any of them to register. Homebrew's own
+  # instructions are to put it on $fpath before compinit, which is here.
+  for brew_prefix in ${HOMEBREW_PREFIX:-} /opt/homebrew /usr/local; do
+    if [[ -d "$brew_prefix/share/zsh/site-functions" ]]; then
+      fpath=("$brew_prefix/share/zsh/site-functions" $fpath)
+      break
+    fi
+  done
+  unset brew_prefix
+
+  # oh-my-zsh drops its completion dump in $HOME when this is unset. Keep it
+  # under the cache directory, keyed on the zsh version so an upgrade rebuilds
+  # it rather than reusing one built for a different zsh.
   ZSH_COMPDUMP="${ZSH_COMPDUMP:-${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompdump-${ZSH_VERSION}}"
   mkdir -p "${ZSH_COMPDUMP:h}"
-  zmodload zsh/complist
 
   # The stock plugins return non-zero when the tool they wrap is missing, and
   # the profile is sourced under errexit.

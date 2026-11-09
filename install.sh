@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 HOMEBREW_INSTALLER="https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh"
 OH_MY_ZSH_REPO="https://github.com/ohmyzsh/ohmyzsh.git"
+NVM_REPO="https://github.com/nvm-sh/nvm.git"
 
 # The zsh set_login_shell prefers: the one macOS ships, which is already listed
 # in /etc/shells and does not disappear with a `brew uninstall`. Variables
@@ -322,7 +323,7 @@ version_to_install() {
 ruby_install() {
   brew_bundle Brewfile.ruby
 
-  # scripts/rbenv only puts the shims on $PATH in a *new* shell, so without
+  # The rbenv plugin only puts the shims on $PATH in a *new* shell, so without
   # this the gems below would go to the system Ruby - the very thing rbenv is
   # here to avoid, and where `gem install` fails on permissions. Skipped in a
   # dry run, where `rbenv root` would fail because rbenv was never installed.
@@ -351,8 +352,8 @@ ruby_install() {
 python_install() {
   brew_bundle Brewfile.python
 
-  # As with rbenv above: scripts/pyenv only takes effect in a new shell, and a
-  # dry run has no pyenv to ask for its root.
+  # As with rbenv above: the pyenv plugin only takes effect in a new shell,
+  # and a dry run has no pyenv to ask for its root.
   if [[ $DRY_RUN -eq 0 ]]; then
     PATH="$(pyenv root)/shims:$PATH"
     export PATH
@@ -376,50 +377,62 @@ python_install() {
 
 ## ---------- Node Dependencies ---------- ##
 
-# Prints the path to nvm.sh, which has to be sourced before `nvm` exists as a
-# shell function. Mirrors the lookup in scripts/nvm: $NVM_DIR for an
-# install-script install, Homebrew's prefix for the formula.
-nvm_script_path() {
-  local brew_prefix=""
-  if command -v brew &>/dev/null; then
-    brew_prefix="$(brew --prefix nvm 2>/dev/null || true)"
+# nvm owns the node runtime, the way rbenv and pyenv own theirs, so there is no
+# Homebrew node racing its shims for $PATH. nvm itself is cloned into
+# $NVM_DIR - nvm's own manual install - rather than installed with Homebrew:
+# nvm does not support the formula, and oh-my-zsh's nvm plugin, which loads it
+# in every shell, only looks for nvm.sh in $NVM_DIR.
+nvm_install() {
+  local tag
+
+  if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+    echo "nvm is already installed at $NVM_DIR"
+    return 0
   fi
 
-  local dir
-  for dir in "${NVM_DIR:-$HOME/.nvm}" "$brew_prefix"; do
-    if [[ -n "$dir" && -s "$dir/nvm.sh" ]]; then
-      echo "$dir/nvm.sh"
-      return 0
-    fi
-  done
+  # The Homebrew formula keeps its node versions here but nvm.sh elsewhere.
+  # Cloning into the directory would fail and moving it would lose those
+  # versions, so that is left to the user.
+  if [[ -e "$NVM_DIR" ]]; then
+    echo "Error: $NVM_DIR exists but holds no nvm.sh (left by a Homebrew nvm?);"
+    echo "move it aside and re-run to install nvm there"
+    return 1
+  fi
 
-  echo "Error: could not find nvm.sh; is nvm installed?" >&2
-  return 1
+  echo "Installing nvm..."
+  if ! run git clone --quiet "$NVM_REPO" "$NVM_DIR"; then
+    echo "Error: nvm installation failed"
+    return 1
+  fi
+
+  # The default branch is nvm's development line; check out the newest
+  # release, as nvm's install instructions do.
+  if [[ $DRY_RUN -eq 1 ]]; then
+    tag="<latest release>"
+  elif ! tag="$(git -C "$NVM_DIR" describe --abbrev=0 --tags --match 'v[0-9]*' \
+    "$(git -C "$NVM_DIR" rev-list --tags --max-count=1)")"; then
+    echo "Error: could not find an nvm release to check out"
+    return 1
+  fi
+  run git -C "$NVM_DIR" checkout --quiet "$tag"
 }
 
-# nvm is the only node here, the way rbenv and pyenv own their runtimes: a
-# Homebrew-installed node would race nvm's shims for $PATH and take the global
-# packages with it, and Homebrew's `npm` is just an alias for the `node`
-# formula, so it would install node a second time.
 node_install() {
-  brew_bundle Brewfile.node
-
-  # The formula leaves $NVM_DIR to us, and nvm needs it to exist before it can
-  # install a runtime into it.
-  export NVM_DIR="$HOME/.nvm"
-  mkdir -p "$NVM_DIR"
-
-  local nvm_sh
-  nvm_sh="$(nvm_script_path)" || return 1
+  export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+  nvm_install || return 1
 
   echo "Installing the Node LTS..."
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "[dry-run] nvm install --lts && nvm alias default 'lts/*'"
+    return 0
+  fi
   # nvm.sh is not written to be sourced under `set -eu`, so load it and use it
   # in a subshell with both relaxed; the runtime it installs lands in $NVM_DIR,
   # which outlives the subshell.
   if ! (
     set +eu
     # shellcheck source=/dev/null
-    \. "$nvm_sh"
+    \. "$NVM_DIR/nvm.sh"
     nvm install --lts && nvm alias default "lts/*"
   ); then
     echo "Error: nvm could not install the Node LTS"

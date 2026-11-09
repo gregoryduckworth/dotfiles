@@ -35,198 +35,6 @@ test_every_script_exits_cleanly_on_its_own() {
   done
 }
 
-## ---------- scripts/nvm ---------- ##
-
-test_nvm_is_loaded_when_installed() {
-  skip_unless_command zsh
-  mkdir -p "$HOME/.nvm"
-  echo 'export NVM_LOADED=yes' >"$HOME/.nvm/nvm.sh"
-  echo 'export NVM_COMPLETION_LOADED=yes' >"$HOME/.nvm/bash_completion"
-
-  assert_eq "yes" "$(zsh_script nvm 'echo $NVM_LOADED')"
-  assert_eq "yes" "$(zsh_script nvm 'echo $NVM_COMPLETION_LOADED')"
-}
-
-test_nvm_is_loaded_from_the_homebrew_prefix() {
-  skip_unless_command zsh
-  # `brew install nvm` keeps nvm.sh under its own prefix, with the completion
-  # under etc/, and leaves $NVM_DIR to hold the runtimes only.
-  local prefix="$TEST_TMP/homebrew"
-  mkdir -p "$prefix/opt/nvm/etc/bash_completion.d"
-  echo 'export NVM_LOADED=brew' >"$prefix/opt/nvm/nvm.sh"
-  echo 'export NVM_COMPLETION_LOADED=brew' \
-    >"$prefix/opt/nvm/etc/bash_completion.d/nvm"
-
-  assert_eq "brew" \
-    "$(HOMEBREW_PREFIX="$prefix" zsh_script nvm 'echo $NVM_LOADED')"
-  assert_eq "brew" \
-    "$(HOMEBREW_PREFIX="$prefix" zsh_script nvm 'echo $NVM_COMPLETION_LOADED')"
-  # $NVM_DIR still points at where nvm keeps the runtimes it installs.
-  assert_eq "$HOME/.nvm" \
-    "$(HOMEBREW_PREFIX="$prefix" zsh_script nvm 'echo $NVM_DIR')"
-}
-
-test_nvm_prefers_the_copy_in_nvm_dir() {
-  skip_unless_command zsh
-  # Both flavours installed: the one in $NVM_DIR is the one nvm's own installer
-  # put there, so it wins.
-  local prefix="$TEST_TMP/homebrew"
-  mkdir -p "$HOME/.nvm" "$prefix/opt/nvm"
-  echo 'export NVM_LOADED=nvm_dir' >"$HOME/.nvm/nvm.sh"
-  echo 'export NVM_LOADED=brew' >"$prefix/opt/nvm/nvm.sh"
-
-  assert_eq "nvm_dir" \
-    "$(HOMEBREW_PREFIX="$prefix" zsh_script nvm 'echo $NVM_LOADED')"
-}
-
-test_nvm_is_skipped_when_not_installed() {
-  skip_unless_command zsh
-  assert_eq "$HOME/.nvm" "$(zsh_script nvm 'echo $NVM_DIR')"
-  zsh_script nvm || fail "scripts/nvm failed without nvm installed"
-}
-
-## ---------- scripts/rbenv ---------- ##
-
-test_rbenv_is_initialised_when_installed() {
-  skip_unless_command zsh
-  stub rbenv 'echo "export RBENV_LOADED=yes"'
-
-  assert_eq "yes" "$(zsh_script rbenv 'echo $RBENV_LOADED')"
-}
-
-test_rbenv_shims_are_added_to_the_path() {
-  skip_unless_command zsh
-  mkdir -p "$HOME/.rbenv/bin"
-
-  assert_contains "$(zsh_script rbenv 'echo $PATH')" "$HOME/.rbenv/bin"
-}
-
-test_rbenv_shims_are_not_added_twice() {
-  skip_unless_command zsh
-  mkdir -p "$HOME/.rbenv/bin"
-  local path
-  # .zshrc is re-sourced by hand (`sz`) all the time; each re-source used to
-  # push another copy of the shims onto $PATH.
-  stub rbenv 'exit 0'
-  path="$(zsh_script rbenv "source '$REPO_ROOT/scripts/rbenv'; echo \$PATH")"
-
-  assert_eq "1" "$(printf '%s\n' "${path//:/$'\n'}" | grep -c "^$HOME/.rbenv/bin$")"
-}
-
-test_rbenv_shims_are_left_off_the_path_when_missing() {
-  skip_unless_command zsh
-  # A real rbenv on the host would prepend its own shims, so stub it out: the
-  # only thing under test is that a missing ~/.rbenv leaves $PATH alone rather
-  # than adding a directory that does not exist.
-  stub rbenv 'exit 0'
-
-  assert_not_contains "$(zsh_script rbenv 'echo $PATH')" "$HOME/.rbenv"
-}
-
-test_rbenv_is_skipped_when_not_installed() {
-  skip_unless_command zsh
-  local errors
-  # A PATH with no rbenv on it, so the `command -v rbenv` guard has to hold.
-  # Without it the eval still succeeds, so the tell is the noise on stderr.
-  errors="$(PATH="/usr/bin:/bin" zsh_script rbenv 2>&1 >/dev/null)" ||
-    fail "scripts/rbenv failed without rbenv installed"
-  assert_eq "" "$errors" "scripts/rbenv complained about the missing rbenv"
-}
-
-## ---------- scripts/pyenv ---------- ##
-
-test_pyenv_is_initialised_when_installed() {
-  skip_unless_command zsh
-  stub pyenv 'echo "export PYENV_LOADED=yes"'
-
-  assert_eq "yes" "$(zsh_script pyenv 'echo $PYENV_LOADED')"
-}
-
-test_pyenv_init_skips_the_startup_rehash() {
-  skip_unless_command zsh
-  # A rehash on startup is slow, and fails before any version is installed,
-  # which would abort a profile sourced under errexit.
-  stub pyenv 'exit 0'
-  zsh_script pyenv || fail "scripts/pyenv left a non-zero exit status behind"
-
-  assert_stub_called pyenv "init --no-rehash - zsh"
-}
-
-test_pyenv_shims_are_added_to_the_path() {
-  skip_unless_command zsh
-  mkdir -p "$HOME/.pyenv/bin"
-  stub pyenv 'exit 0'
-
-  assert_contains "$(zsh_script pyenv 'echo $PATH')" "$HOME/.pyenv/bin"
-}
-
-test_pyenv_shims_are_not_added_twice() {
-  skip_unless_command zsh
-  mkdir -p "$HOME/.pyenv/bin"
-  stub pyenv 'exit 0'
-  local path
-  # As with rbenv: every `sz` used to push another copy onto $PATH.
-  path="$(zsh_script pyenv "source '$REPO_ROOT/scripts/pyenv'; echo \$PATH")"
-
-  assert_eq "1" "$(printf '%s\n' "${path//:/$'\n'}" | grep -c "^$HOME/.pyenv/bin$")"
-}
-
-test_pyenv_shims_are_left_off_the_path_when_missing() {
-  skip_unless_command zsh
-  # A Homebrew pyenv has no ~/.pyenv/bin; adding it anyway put a directory
-  # that does not exist on every $PATH.
-  stub pyenv 'exit 0'
-
-  assert_not_contains "$(zsh_script pyenv 'echo $PATH')" "$HOME/.pyenv/bin"
-}
-
-test_pyenv_is_skipped_when_not_installed() {
-  skip_unless_command zsh
-  local errors
-  # A PATH with no pyenv on it, so the `command -v pyenv` guard has to hold.
-  errors="$(PATH="/usr/bin:/bin" zsh_script pyenv 2>&1 >/dev/null)" ||
-    fail "scripts/pyenv failed without pyenv installed"
-  assert_eq "" "$errors" "scripts/pyenv complained about the missing pyenv"
-}
-
-## ---------- scripts/homebrew ---------- ##
-
-test_homebrew_curl_is_left_off_the_path_when_missing() {
-  skip_unless_command zsh
-  local prefix="$TEST_TMP/brew-without-curl"
-  mkdir -p "$prefix"
-
-  # Nothing to prepend: $PATH must not gain a directory that does not exist.
-  assert_not_contains \
-    "$(HOMEBREW_PREFIX="$prefix" zsh_script homebrew 'echo $PATH')" "$prefix"
-}
-
-test_homebrew_curl_comes_from_homebrew_prefix_first() {
-  skip_unless_command zsh
-  local prefix="$TEST_TMP/brew" path
-  mkdir -p "$prefix/opt/curl/bin"
-  path="$(HOMEBREW_PREFIX="$prefix" zsh_script homebrew 'echo $PATH')"
-
-  assert_eq "$prefix/opt/curl/bin" "${path%%:*}"
-}
-
-test_homebrew_curl_is_not_added_twice() {
-  skip_unless_command zsh
-  local prefix="$TEST_TMP/brew" path
-  mkdir -p "$prefix/opt/curl/bin"
-  # Re-sourcing the profile (`sz`) used to push another copy onto $PATH.
-  path="$(HOMEBREW_PREFIX="$prefix" zsh_script homebrew \
-    "source '$REPO_ROOT/scripts/homebrew'; echo \$PATH")"
-
-  assert_eq "1" "$(printf '%s\n' "${path//:/$'\n'}" | grep -cFx "$prefix/opt/curl/bin")"
-}
-
-test_homebrew_leaves_no_loop_variable_behind() {
-  skip_unless_command zsh
-  assert_eq "unset" \
-    "$(zsh_script homebrew '[[ -z ${curl_bin+set} ]] && echo unset')"
-}
-
 ## ---------- scripts/browserstack ---------- ##
 
 test_browserstack_keeps_credentials_from_the_environment() {
@@ -276,92 +84,6 @@ test_browserstack_exports_chrome() {
   # No stray backslash: the path has to survive being used as "$CHROME".
   assert_eq "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
     "$(zsh_script browserstack 'echo $CHROME')"
-}
-
-## ---------- scripts/history ---------- ##
-
-test_history_is_saved_to_a_file() {
-  skip_unless_command zsh
-  # zsh writes no history at all until HISTFILE is set, so this is the setting
-  # the rest of the file depends on.
-  assert_eq "$HOME/.zsh_history" "$(zsh_script history 'echo $HISTFILE')"
-  assert_eq "50000" "$(zsh_script history 'echo $HISTSIZE')"
-  # SAVEHIST smaller than HISTSIZE silently drops the oldest entries on exit.
-  assert_eq "50000" "$(zsh_script history 'echo $SAVEHIST')"
-}
-
-test_history_options_are_set() {
-  skip_unless_command zsh
-  local option
-  for option in sharehistory histignorealldups histignorespace histreduceblanks; do
-    assert_eq "on" "$(zsh_script history "echo \$options[$option]")" "$option"
-  done
-}
-
-## ---------- scripts/completion ---------- ##
-
-test_completion_runs_compinit() {
-  skip_unless_command zsh
-  # compdef only exists once compinit has run, so it is the tell that the
-  # completion system is actually initialised rather than merely autoloadable.
-  assert_eq "compdef: function" "$(zsh_script completion 'whence -w compdef')"
-}
-
-test_completion_loads_the_menu_selection_module() {
-  skip_unless_command zsh
-  # Without zsh/complist the `menu select` style below has no keymap to drive.
-  assert_eq "loaded" \
-    "$(zsh_script completion 'zmodload -e zsh/complist && echo loaded')"
-}
-
-test_completion_styles_are_set() {
-  skip_unless_command zsh
-  local styles
-  styles="$(zsh_script completion 'zstyle -L ":completion:*"')"
-
-  assert_contains "$styles" "matcher-list 'm:{a-z}={A-Z}'"
-  assert_contains "$styles" "menu select"
-}
-
-test_completion_matches_case_insensitively_in_one_direction_only() {
-  skip_unless_command zsh
-  local matcher
-  matcher="$(zsh_script completion 'zstyle -L ":completion:*" matcher-list')"
-
-  # 'm:{a-z}={A-Z}' widens lowercase to uppercase. The two-way spelling
-  # 'm:{a-zA-Z}={A-Za-z}' would also let a typed capital match a lowercase
-  # name, which makes an explicit capital meaningless.
-  assert_not_contains "$matcher" "a-zA-Z"
-}
-
-test_completion_keeps_its_dump_out_of_home() {
-  skip_unless_command zsh
-  zsh_script completion || fail "scripts/completion left a non-zero exit status"
-
-  assert_file "$HOME/.cache/zsh/zcompdump-$(zsh -c 'echo $ZSH_VERSION')"
-  assert_missing "$HOME/.zcompdump"
-}
-
-test_completion_leaves_an_existing_compinit_alone() {
-  skip_unless_command zsh
-  # A second compinit would rebuild the same dump for nothing, so the file has
-  # to notice that oh-my-zsh already ran one - compdef being the tell.
-  zsh -c "set -e
-    compdef() { : }
-    source '$REPO_ROOT/scripts/completion'" ||
-    fail "scripts/completion failed with compinit already run"
-
-  assert_missing "$HOME/.cache/zsh/zcompdump-$(zsh -c 'echo $ZSH_VERSION')"
-}
-
-test_completion_is_quiet() {
-  skip_unless_command zsh
-  local errors
-  # compinit stops to ask about completion files with the wrong permissions
-  # unless it is told to skip them, which would hang a non-interactive shell.
-  errors="$(zsh_script completion 2>&1 >/dev/null)" ||
-    fail "scripts/completion failed"
-  assert_eq "" "$errors" "scripts/completion wrote to stderr"
 }
 
 ## ---------- scripts/oh-my-zsh ---------- ##
@@ -415,9 +137,9 @@ test_oh_my_zsh_enables_the_expected_plugins() {
   local plugins
   plugins="$(zsh_script oh-my-zsh 'echo $plugins')"
 
-  # git supplies the git aliases (gst, gaa, gl, gp, gbda, ...); nothing in
-  # scripts/ defines its own.
-  assert_eq "git brew docker gh" "$plugins"
+  # git and docker supply the aliases, nvm/pyenv/rbenv load the version
+  # managers; nothing in scripts/ does either any more.
+  assert_eq "git brew docker gh nvm pyenv rbenv" "$plugins"
 }
 
 test_oh_my_zsh_does_not_prompt_to_update() {
@@ -427,13 +149,33 @@ test_oh_my_zsh_does_not_prompt_to_update() {
   assert_contains "$(zsh_script oh-my-zsh 'zstyle -L ":omz:update"')" "mode reminder"
 }
 
-test_oh_my_zsh_shares_the_completion_dump() {
+test_oh_my_zsh_keeps_the_completion_dump_out_of_home() {
   skip_unless_command zsh
   fake_oh_my_zsh
-  # Left unset, oh-my-zsh drops a second dump in $HOME.
+  # Left unset, oh-my-zsh drops its dump in $HOME.
   assert_eq "$HOME/.cache/zsh/zcompdump-$(zsh -c 'echo $ZSH_VERSION')" \
     "$(zsh_script oh-my-zsh 'echo $ZSH_COMPDUMP')"
   assert_missing "$HOME/.zcompdump"
+}
+
+test_oh_my_zsh_puts_homebrew_completions_on_fpath_before_compinit() {
+  skip_unless_command zsh
+  local prefix="$TEST_TMP/brew"
+  mkdir -p "$prefix/share/zsh/site-functions" "$HOME/.oh-my-zsh"
+  # Record $fpath at the moment oh-my-zsh starts, which is when its compinit
+  # runs: the brew plugin adding the directory later is too late.
+  # shellcheck disable=SC2016  # expanded by zsh, not here
+  echo 'print -r -- "$fpath[1]" >"$HOME/fpath-at-load"' >"$HOME/.oh-my-zsh/oh-my-zsh.sh"
+  HOMEBREW_PREFIX="$prefix" zsh_script oh-my-zsh
+
+  assert_eq "$prefix/share/zsh/site-functions" "$(cat "$HOME/fpath-at-load")"
+}
+
+test_oh_my_zsh_leaves_no_loop_variable_behind() {
+  skip_unless_command zsh
+  fake_oh_my_zsh
+  assert_eq "unset" \
+    "$(zsh_script oh-my-zsh '[[ -z ${brew_prefix+set} ]] && echo unset')"
 }
 
 test_oh_my_zsh_is_a_no_op_when_not_installed() {
@@ -506,36 +248,6 @@ test_editor_leaves_no_loop_variable_behind() {
   skip_unless_command zsh
   assert_eq "unset" \
     "$(zsh_script editor '[[ -z ${candidate+set} ]] && echo unset')"
-}
-
-## ---------- scripts/navigation ---------- ##
-
-test_navigation_options_are_set() {
-  skip_unless_command zsh
-  # AUTO_CD itself only fires in an interactive shell, so the option is all
-  # there is to assert from here.
-  assert_eq "on" "$(zsh_script navigation 'echo $options[autocd]')"
-  assert_eq "on" "$(zsh_script navigation 'echo $options[autopushd]')"
-  assert_eq "on" "$(zsh_script navigation 'echo $options[pushdignoredups]')"
-  assert_eq "20" "$(zsh_script navigation 'echo $DIRSTACKSIZE')"
-}
-
-test_cd_pushes_the_old_directory_onto_the_stack() {
-  skip_unless_command zsh
-  mkdir -p "$TEST_TMP/a" "$TEST_TMP/b"
-
-  assert_eq "yes" "$(zsh_script navigation \
-    "cd '$TEST_TMP/a'; previous=\$PWD; cd '$TEST_TMP/b'; [[ \$dirstack[1] == \$previous ]] && echo yes")"
-}
-
-test_bouncing_between_two_directories_does_not_fill_the_stack() {
-  skip_unless_command zsh
-  mkdir -p "$TEST_TMP/a" "$TEST_TMP/b"
-
-  # Five hops between the same two directories, so without PUSHD_IGNORE_DUPS
-  # the stack would hold five entries instead of the two distinct ones.
-  assert_eq "2" "$(zsh_script navigation \
-    "cd '$TEST_TMP/a'; cd '$TEST_TMP/b'; cd '$TEST_TMP/a'; cd '$TEST_TMP/b'; cd '$TEST_TMP/a'; echo \${#dirstack}")"
 }
 
 ## ---------- scripts/zsh-plugins ---------- ##
