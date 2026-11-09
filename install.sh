@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOMEBREW_INSTALLER="https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh"
 OH_MY_ZSH_REPO="https://github.com/ohmyzsh/ohmyzsh.git"
 NVM_REPO="https://github.com/nvm-sh/nvm.git"
+CLAUDE_INSTALLER="https://claude.ai/install.sh"
 
 # The zsh set_login_shell prefers: the one macOS ships, which is already listed
 # in /etc/shells and does not disappear with a `brew uninstall`. Variables
@@ -24,8 +25,9 @@ usage() {
 Usage: install.sh [options]
 
 Bootstraps a machine: installs Homebrew, offers each group of optional
-dependencies in turn, installs oh-my-zsh, symlinks scripts/ and .zshrc into
-$HOME, makes zsh the login shell, and writes a few macOS defaults.
+dependencies in turn, installs oh-my-zsh and Claude Code, symlinks scripts/ and .zshrc into
+$HOME, includes the shared git settings from ~/.gitconfig, makes zsh the
+login shell, and writes a few macOS defaults.
 
 Options:
   -n, --dry-run  Print the commands that would change the machine, and run
@@ -111,6 +113,31 @@ oh_my_zsh_install() {
   fi
 }
 
+# Claude Code, through Anthropic's native installer rather than the Homebrew
+# cask: it puts claude in ~/.local/bin (scripts/path puts that on $PATH) and
+# keeps it up to date itself.
+claude_install() {
+  if command -v claude &>/dev/null || [[ -x "$HOME/.local/bin/claude" ]]; then
+    echo "Claude Code is already installed"
+    return 0
+  fi
+
+  if [[ -n "${CI:-}" ]]; then
+    echo "Running in CI mode, skipping Claude Code..."
+    return 0
+  fi
+
+  echo "Installing Claude Code..."
+  # Not run through run(): the installer is piped into bash, which a dry run
+  # must not reach either.
+  if [[ $DRY_RUN -eq 1 ]]; then
+    echo "[dry-run] curl -fsSL $CLAUDE_INSTALLER | bash"
+  elif ! curl -fsSL "$CLAUDE_INSTALLER" | bash; then
+    echo "Error: Claude Code installation failed"
+    return 1
+  fi
+}
+
 # link_into_checkout <target> <link>
 #
 # Points <link> at <target>, so the installed dotfiles are the checkout rather
@@ -162,6 +189,22 @@ source_profile() {
   link_into_checkout "$SCRIPT_DIR/.$1" "$HOME/.$1"
 
   echo "Run 'exec zsh' or open a new terminal to load .$1"
+}
+
+# Includes the checkout's gitconfig from ~/.gitconfig, so the shared settings
+# update with a `git pull` while identity and credential helpers stay in
+# ~/.gitconfig. The include is appended, so its settings win over the same keys
+# set earlier in ~/.gitconfig.
+git_config_install() {
+  local gitconfig="$SCRIPT_DIR/gitconfig"
+
+  if git config --global --get-all include.path 2>/dev/null | grep -Fqx "$gitconfig"; then
+    echo "$HOME/.gitconfig already includes $gitconfig"
+    return 0
+  fi
+
+  echo "Including $gitconfig from ~/.gitconfig..."
+  run git config --global --add include.path "$gitconfig"
 }
 
 # Prints the current user's login shell from the account database. $SHELL is
@@ -515,7 +558,9 @@ main() {
   install_check "python"
   install_check "node"
   oh_my_zsh_install
+  claude_install
   source_profile "zshrc"
+  git_config_install
   set_login_shell
   configure_macos
   homebrew_cleanup

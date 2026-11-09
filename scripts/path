@@ -1,0 +1,6 @@
+# ~/.local/bin, where Claude Code's installer (and `uv tool`, pipx) put their
+# executables. Only added when it exists, and only once, so re-sourcing the
+# profile does not keep growing $PATH.
+if [[ -d "$HOME/.local/bin" && ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+  export PATH="$HOME/.local/bin:$PATH"
+fi

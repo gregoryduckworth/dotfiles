@@ -31,6 +31,28 @@ over a Homebrew zsh because macOS ships it and already lists it in
 command to run by hand rather than stopping the bootstrap, and the step is
 skipped in CI.
 
+It installs [Claude Code](https://claude.com/product/claude-code) with
+Anthropic's native installer (`curl -fsSL https://claude.ai/install.sh | bash`)
+rather than the Homebrew cask, because the native install keeps itself up to
+date. It lands in `~/.local/bin`, which `scripts/path` puts on `$PATH`. A
+machine that already has `claude` is left alone, and CI skips the step.
+
+It includes the repo's `gitconfig` from `~/.gitconfig` (`[include] path =
+<checkout>/gitconfig`), so the shared git settings update with a `git pull`:
+
+| Setting | Effect |
+| --- | --- |
+| `init.defaultBranch = main` | new repositories start on `main` |
+| `pull.rebase = true` | `git pull` rebases local commits instead of merging |
+| `rebase.autoStash = true` | ...even with uncommitted changes |
+| `push.autoSetupRemote = true` | the first `git push` of a branch sets its upstream |
+| `fetch.prune = true` | fetches drop remote branches that are gone |
+
+Your name, email and credential helpers stay in `~/.gitconfig`, where
+`git config --global` and `gh auth setup-git` write them. The include is added
+at the end of `~/.gitconfig`, so these settings win over the same keys set
+earlier in it; to override one, add it after the `[include]`.
+
 It does not copy anything into `$HOME`; it symlinks:
 
 ```
@@ -89,6 +111,12 @@ already-installed check.
 | `Brewfile.ruby` | when you answer yes to the Ruby prompt |
 | `Brewfile.python` | when you answer yes to the Python prompt |
 
+The base `Brewfile` includes Docker - the `docker` CLI with its `compose` and
+`buildx` plugins, and [colima](https://github.com/abiosoft/colima) as the
+runtime in place of Docker Desktop. colima is declared with
+`restart_service: :changed`, so `brew bundle` starts it as a login service and
+`docker` works in any new terminal.
+
 `brew bundle` has no tag support, so an optional group is a separate file. The
 Ruby and Python ones declare only `rbenv` and `pyenv`: the interpreter itself
 comes from the version manager, not from Homebrew.
@@ -111,6 +139,7 @@ sourced by `.zshrc` on shell startup, in glob order.
 | --- | --- |
 | `browserstack` | BrowserStack credentials and the path to Chrome |
 | `editor` | `$EDITOR` and `$VISUAL` |
+| `path` | `~/.local/bin` (Claude Code, `uv tool`, pipx) on `$PATH` |
 | `oh-my-zsh` | oh-my-zsh, its theme and plugins, when installed |
 | `zsh-plugins` | `zsh-autosuggestions` and `zsh-syntax-highlighting`, when installed |
 
@@ -209,7 +238,7 @@ too, so the suite gives the same answer from a fully set-up shell as from CI.
 
 | File | Covers |
 | --- | --- |
-| `tests/install_test.sh` | `install.sh` functions: `brew bundle` installs, the CI/interactive prompt, the nvm clone, the symlinks into `$HOME` and their backup and failure paths, the login shell, macOS defaults |
+| `tests/install_test.sh` | `install.sh` functions: `brew bundle` installs, the CI/interactive prompt, the nvm clone, the Claude Code install, the `gitconfig` include, the symlinks into `$HOME` and their backup and failure paths, the login shell, macOS defaults |
 | `tests/brewfile_test.sh` | the Brewfiles: every one is installed by `install.sh`, every entry is a directive `brew bundle` understands, and none declares nvm or node |
 | `tests/profile_test.sh` | `.zshrc`: loading `scripts/`, loading oh-my-zsh first and exactly once, sourcing `~/.zshrc.local` last, and coping with a missing or empty `~/scripts` |
 | `tests/scripts_test.sh` | each file in `scripts/`: parses, exits cleanly, and defines the expected aliases, exports and functions |
@@ -226,7 +255,8 @@ Every push to `main` and every pull request runs `.github/workflows/ci.yml`:
 - **Tests** (Ubuntu and macOS) - `./tests/run.sh`.
 - **Run install.sh** (macOS) - runs `install.sh` end to end against a throwaway
   `$HOME`, twice, then checks the installed paths are symlinks into the checkout,
-  that oh-my-zsh was cloned, and diffs the linked files against the repo.
+  that oh-my-zsh was cloned, that `~/.gitconfig` includes `gitconfig` exactly
+  once, and diffs the linked files against the repo.
   Then it opens an interactive shell on the installed profile and the real
   oh-my-zsh - the test suite only uses a stand-in - and fails if anything is
   written to stderr or the theme and git aliases are missing.

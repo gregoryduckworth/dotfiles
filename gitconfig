@@ -1,0 +1,22 @@
+# Global git settings, included from ~/.gitconfig by install.sh. Identity,
+# credential helpers and anything machine-specific stay in ~/.gitconfig, where
+# `git config --global` and tools like `gh auth setup-git` write them.
+
+[init]
+	defaultBranch = main
+
+[pull]
+	# Replay local commits on top of the remote instead of adding merge commits.
+	rebase = true
+
+[rebase]
+	# Lets `git pull` rebase with uncommitted changes in the working tree.
+	autoStash = true
+
+[push]
+	# The first `git push` of a new branch sets its upstream; no `-u` needed.
+	autoSetupRemote = true
+
+[fetch]
+	# Drop remote-tracking branches that are gone from the remote.
+	prune = true

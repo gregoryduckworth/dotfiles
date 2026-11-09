@@ -121,6 +121,11 @@ jobs:
           # Cloned, not linked, and the re-run must have left it alone.
           [ -f "$HOME_SANDBOX/.oh-my-zsh/oh-my-zsh.sh" ] ||
             { echo "oh-my-zsh was not installed"; exit 1; }
+          # ~/.gitconfig includes the checkout's gitconfig, once, after a re-run.
+          [ "$(HOME="$HOME_SANDBOX" git config --global --get-all include.path)" = "$PWD/gitconfig" ] ||
+            { echo "~/.gitconfig does not include gitconfig exactly once"; exit 1; }
+          [ "$(HOME="$HOME_SANDBOX" git config --global --includes --get pull.rebase)" = true ] ||
+            { echo "the shared git settings are not in effect"; exit 1; }
           # diff follows the symlinks it is handed, so this compares contents.
           diff -r scripts "$HOME_SANDBOX/scripts"
           diff .zshrc "$HOME_SANDBOX/.zshrc"
