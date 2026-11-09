@@ -19,7 +19,6 @@ test_profile_loads_every_script() {
 
   # One representative from each file in scripts/.
   assert_eq "1" "$(zsh_profile 'echo $DOCKER_BUILDKIT')" "scripts/docker"
-  assert_eq "0" "$(zsh_profile 'alias gs >/dev/null; echo $?')" "scripts/github"
   assert_contains "$(zsh_profile 'echo $CHROME')" "Google" "scripts/browserstack"
   assert_contains "$(zsh_profile 'echo $NVM_DIR')" ".nvm" "scripts/nvm"
   assert_contains "$(zsh_profile 'echo $HISTFILE')" ".zsh_history" "scripts/history"
@@ -114,7 +113,7 @@ fake_oh_my_zsh() {
   mkdir -p "$HOME/.oh-my-zsh"
   cat >"$HOME/.oh-my-zsh/oh-my-zsh.sh" <<'EOF'
 print -r -- loaded >>"$HOME/omz-loads"
-alias gs='oh-my-zsh git status'
+alias dr='oh-my-zsh docker run'
 alias omz-only='oh-my-zsh'
 EOF
 }
@@ -133,7 +132,7 @@ test_scripts_override_oh_my_zsh() {
   fake_oh_my_zsh
 
   # Why .zshrc sources oh-my-zsh first: this repo's aliases have to win.
-  assert_eq "gs='git status'" "$(zsh_profile 'alias gs')"
+  assert_eq "dr='docker run --rm -it \$(docker build -q .)'" "$(zsh_profile 'alias dr')"
 }
 
 test_profile_loads_oh_my_zsh_exactly_once() {
@@ -181,7 +180,7 @@ test_profile_survives_a_missing_local_override() {
 
 test_local_override_is_not_tracked_by_the_repo() {
   skip_unless_command git
-  # A credential in a tracked file is one `gaa` (`git add .`) away from being
+  # A credential in a tracked file is one `gaa` (`git add --all`) away from being
   # published, so git has to ignore the override outright.
   git -C "$REPO_ROOT" check-ignore -q .zshrc.local ||
     fail ".zshrc.local is not gitignored"

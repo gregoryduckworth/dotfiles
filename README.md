@@ -96,7 +96,6 @@ order, so the filenames decide the order.
 | `completion` | `compinit`, case-insensitive matching, arrow-key menu selection |
 | `docker` | Docker aliases and BuildKit |
 | `editor` | `$EDITOR` and `$VISUAL` |
-| `github` | `git` and `gh` aliases |
 | `history` | A 50k-line shared history that dedupes |
 | `homebrew` | Homebrew's curl on `$PATH` |
 | `navigation` | `AUTO_CD` and the directory stack |
@@ -119,8 +118,8 @@ general packages, and a shell without them starts normally.
 ### Oh My Zsh
 Sourced before everything else in `scripts/`, because it brings aliases,
 options and completions of its own and the files here are meant to win over
-them: `gp` is `git pull` because `scripts/github` says so, not `git push`
-because oh-my-zsh's git plugin does.
+them: `dr` builds and runs the current directory because `scripts/docker`
+says so, not the bare `docker container run` of oh-my-zsh's docker plugin.
 
 It is configured, not adopted wholesale:
 
@@ -129,13 +128,14 @@ It is configured, not adopted wholesale:
   `$PROMPT`, and `tests/scripts_test.sh` keeps it that way, since a file
   sourced after oh-my-zsh would silently replace the theme's. Without
   oh-my-zsh you get zsh's plain default prompt.
-- **`plugins=(brew docker gh)`** - completion and aliases for tools this repo
-  already installs. `brew` also runs `brew shellenv` when Homebrew is not on
-  `$PATH` yet, which on Apple Silicon is what puts it there: nothing else in
-  this repo, and no `~/.zprofile`, does. The `git` plugin is deliberately
-  absent: `scripts/github` owns the git aliases, and the plugin's own
-  hundred-odd would be shadowed where the two overlap and left standing where
-  they do not.
+- **`plugins=(git brew docker gh)`** - completion and aliases for tools this
+  repo already installs. `git` provides the git aliases - the standard
+  oh-my-zsh set (`gst` status, `gaa` add all, `gl` pull, `gp` push, `gbda`
+  delete merged branches, ...); see `alias | grep git` or the
+  [plugin's README](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/git).
+  `brew` also runs `brew shellenv` when Homebrew is not on `$PATH` yet, which
+  on Apple Silicon is what puts it there: nothing else in this repo, and no
+  `~/.zprofile`, does.
 - **`zstyle ':omz:update' mode reminder`** - the default stops and asks, which
   puts a prompt in front of the first command in a new terminal. Run
   `omz update` when it suits.
@@ -175,7 +175,7 @@ EOF
 
 The file lives in `$HOME`, outside the checkout, and `install.sh` never touches
 it: only `~/.zshrc` and `~/scripts` are linked. `.gitignore` covers it so a copy
-made inside the checkout cannot be committed by a stray `gaa` (`git add .`).
+made inside the checkout cannot be committed by a stray `gaa` (`git add --all`).
 
 ## Tests
 

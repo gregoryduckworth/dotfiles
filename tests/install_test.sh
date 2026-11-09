@@ -362,7 +362,7 @@ test_source_profile_links_profile_and_scripts() {
   # `git pull` the whole update, with no second copy left to go stale.
   assert_symlink "$HOME/scripts" "$REPO_ROOT/scripts"
   assert_symlink "$HOME/.zshrc" "$REPO_ROOT/.zshrc"
-  assert_file "$HOME/scripts/github"
+  assert_file "$HOME/scripts/oh-my-zsh"
   diff "$REPO_ROOT/.zshrc" "$HOME/.zshrc" || fail "installed .zshrc differs"
   diff -r "$REPO_ROOT/scripts" "$HOME/scripts" || fail "installed scripts differ"
 }
