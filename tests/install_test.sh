@@ -142,7 +142,8 @@ test_claude_install_leaves_an_existing_claude_alone() {
   assert_eq "" "$(stub_calls curl)" "curl ran with Claude Code installed"
 }
 
-test_claude_install_propagates_a_failing_download() {
+test_claude_install_warns_and_carries_on_after_a_failed_download() {
+  # A network hiccup must not abort the rest of the bootstrap.
   stub curl 'exit 22'
   local output status=0
   # Set inside the substitution on purpose: only claude_install should see them.
@@ -153,8 +154,9 @@ test_claude_install_propagates_a_failing_download() {
     claude_install 2>&1
   )" || status=$?
 
-  assert_eq "1" "$status" "a failed download did not fail claude_install"
-  assert_contains "$output" "Error: Claude Code installation failed"
+  assert_eq "0" "$status" "a failed download aborted the bootstrap"
+  assert_contains "$output" "Warning: Claude Code installation failed"
+  assert_contains "$output" "curl -fsSL $CLAUDE_INSTALLER | bash"
 }
 
 test_claude_install_does_not_run_in_ci() {

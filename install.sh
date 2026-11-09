@@ -25,9 +25,9 @@ usage() {
 Usage: install.sh [options]
 
 Bootstraps a machine: installs Homebrew, offers each group of optional
-dependencies in turn, installs oh-my-zsh and Claude Code, symlinks scripts/ and .zshrc into
-$HOME, includes the shared git settings from ~/.gitconfig, makes zsh the
-login shell, and writes a few macOS defaults.
+dependencies in turn, installs oh-my-zsh, symlinks scripts/ and .zshrc into
+$HOME, includes the shared git settings from ~/.gitconfig, installs Claude
+Code, makes zsh the login shell, and writes a few macOS defaults.
 
 Options:
   -n, --dry-run  Print the commands that would change the machine, and run
@@ -116,6 +116,9 @@ oh_my_zsh_install() {
 # Claude Code, through Anthropic's native installer rather than the Homebrew
 # cask: it puts claude in ~/.local/bin (scripts/path puts that on $PATH) and
 # keeps it up to date itself.
+#
+# Never fatal: it is a tool on top of the shell setup, and a network hiccup
+# should not abort a bootstrap that has already installed everything else.
 claude_install() {
   if command -v claude &>/dev/null || [[ -x "$HOME/.local/bin/claude" ]]; then
     echo "Claude Code is already installed"
@@ -133,8 +136,8 @@ claude_install() {
   if [[ $DRY_RUN -eq 1 ]]; then
     echo "[dry-run] curl -fsSL $CLAUDE_INSTALLER | bash"
   elif ! curl -fsSL "$CLAUDE_INSTALLER" | bash; then
-    echo "Error: Claude Code installation failed"
-    return 1
+    echo "Warning: Claude Code installation failed; run" \
+      "'curl -fsSL $CLAUDE_INSTALLER | bash' to install it" >&2
   fi
 }
 
@@ -558,9 +561,9 @@ main() {
   install_check "python"
   install_check "node"
   oh_my_zsh_install
-  claude_install
   source_profile "zshrc"
   git_config_install
+  claude_install
   set_login_shell
   configure_macos
   homebrew_cleanup

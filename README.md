@@ -35,7 +35,9 @@ It installs [Claude Code](https://claude.com/product/claude-code) with
 Anthropic's native installer (`curl -fsSL https://claude.ai/install.sh | bash`)
 rather than the Homebrew cask, because the native install keeps itself up to
 date. It lands in `~/.local/bin`, which `scripts/path` puts on `$PATH`. A
-machine that already has `claude` is left alone, and CI skips the step.
+machine that already has `claude` is left alone, and CI skips the step. A
+failed download prints the command to run by hand rather than stopping the
+bootstrap.
 
 It includes the repo's `gitconfig` from `~/.gitconfig` (`[include] path =
 <checkout>/gitconfig`), so the shared git settings update with a `git pull`:
@@ -115,7 +117,9 @@ The base `Brewfile` includes Docker - the `docker` CLI with its `compose` and
 `buildx` plugins, and [colima](https://github.com/abiosoft/colima) as the
 runtime in place of Docker Desktop. colima is declared with
 `restart_service: :changed`, so `brew bundle` starts it as a login service and
-`docker` works in any new terminal.
+`docker` works in any new terminal. That keeps a VM running (2 CPUs and 2 GiB
+by default): `colima stop` stops it until the next login, and
+`brew services stop colima` stops starting it at login.
 
 `brew bundle` has no tag support, so an optional group is a separate file. The
 Ruby and Python ones declare only `rbenv` and `pyenv`: the interpreter itself
