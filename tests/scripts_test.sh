@@ -371,13 +371,36 @@ test_pyenv_init_skips_the_startup_rehash() {
 
 test_pyenv_shims_are_added_to_the_path() {
   skip_unless_command zsh
+  mkdir -p "$HOME/.pyenv/bin"
+  stub pyenv 'exit 0'
+
   assert_contains "$(zsh_script pyenv 'echo $PATH')" "$HOME/.pyenv/bin"
+}
+
+test_pyenv_shims_are_not_added_twice() {
+  skip_unless_command zsh
+  mkdir -p "$HOME/.pyenv/bin"
+  stub pyenv 'exit 0'
+  local path
+  # As with rbenv: every `sz` used to push another copy onto $PATH.
+  path="$(zsh_script pyenv "source '$REPO_ROOT/scripts/pyenv'; echo \$PATH")"
+
+  assert_eq "1" "$(printf '%s\n' "${path//:/$'\n'}" | grep -c "^$HOME/.pyenv/bin$")"
+}
+
+test_pyenv_shims_are_left_off_the_path_when_missing() {
+  skip_unless_command zsh
+  # A Homebrew pyenv has no ~/.pyenv/bin; adding it anyway put a directory
+  # that does not exist on every $PATH.
+  stub pyenv 'exit 0'
+
+  assert_not_contains "$(zsh_script pyenv 'echo $PATH')" "$HOME/.pyenv/bin"
 }
 
 test_pyenv_is_skipped_when_not_installed() {
   skip_unless_command zsh
   local errors
-  # A PATH with no pyenv on it, so the `which pyenv` guard has to hold.
+  # A PATH with no pyenv on it, so the `command -v pyenv` guard has to hold.
   errors="$(PATH="/usr/bin:/bin" zsh_script pyenv 2>&1 >/dev/null)" ||
     fail "scripts/pyenv failed without pyenv installed"
   assert_eq "" "$errors" "scripts/pyenv complained about the missing pyenv"
@@ -385,20 +408,40 @@ test_pyenv_is_skipped_when_not_installed() {
 
 ## ---------- scripts/homebrew ---------- ##
 
-test_homebrew_curl_is_prepended_when_present() {
+test_homebrew_curl_is_left_off_the_path_when_missing() {
   skip_unless_command zsh
-  local path
-  path="$(zsh_script homebrew 'echo $PATH')"
+  local prefix="$TEST_TMP/brew-without-curl"
+  mkdir -p "$prefix"
 
-  if [[ -d /opt/homebrew/opt/curl/bin ]]; then
-    assert_eq "/opt/homebrew/opt/curl/bin" "${path%%:*}"
-  elif [[ -d /usr/local/opt/curl/bin ]]; then
-    assert_eq "/usr/local/opt/curl/bin" "${path%%:*}"
-  else
-    # Nothing to prepend: the script must leave $PATH alone rather than adding
-    # a directory that does not exist.
-    assert_not_contains "$path" "opt/curl/bin"
-  fi
+  # Nothing to prepend: $PATH must not gain a directory that does not exist.
+  assert_not_contains \
+    "$(HOMEBREW_PREFIX="$prefix" zsh_script homebrew 'echo $PATH')" "$prefix"
+}
+
+test_homebrew_curl_comes_from_homebrew_prefix_first() {
+  skip_unless_command zsh
+  local prefix="$TEST_TMP/brew" path
+  mkdir -p "$prefix/opt/curl/bin"
+  path="$(HOMEBREW_PREFIX="$prefix" zsh_script homebrew 'echo $PATH')"
+
+  assert_eq "$prefix/opt/curl/bin" "${path%%:*}"
+}
+
+test_homebrew_curl_is_not_added_twice() {
+  skip_unless_command zsh
+  local prefix="$TEST_TMP/brew" path
+  mkdir -p "$prefix/opt/curl/bin"
+  # Re-sourcing the profile (`sz`) used to push another copy onto $PATH.
+  path="$(HOMEBREW_PREFIX="$prefix" zsh_script homebrew \
+    "source '$REPO_ROOT/scripts/homebrew'; echo \$PATH")"
+
+  assert_eq "1" "$(printf '%s\n' "${path//:/$'\n'}" | grep -cFx "$prefix/opt/curl/bin")"
+}
+
+test_homebrew_leaves_no_loop_variable_behind() {
+  skip_unless_command zsh
+  assert_eq "unset" \
+    "$(zsh_script homebrew '[[ -z ${curl_bin+set} ]] && echo unset')"
 }
 
 ## ---------- scripts/browserstack ---------- ##
