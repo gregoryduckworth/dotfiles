@@ -454,9 +454,6 @@ configure_macos() {
   # Show filename extensions by default
   run defaults write NSGlobalDomain AppleShowAllExtensions -bool true
 
-  # Show battery percentage (note: this may not work on macOS Ventura+ due to Control Center changes)
-  run defaults write com.apple.menuextra.battery ShowPercent -string "YES" 2>/dev/null || true
-
   # Stop the bouncing icons
   run defaults write com.apple.dock no-bouncing -bool true
 

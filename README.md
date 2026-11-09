@@ -158,6 +158,27 @@ the directory stack.
 oh-my-zsh is optional at shell startup: a machine without `~/.oh-my-zsh` gets
 zsh's plain defaults rather than an error on every prompt.
 
+#### Aliases that changed meaning
+
+This repo used to define its own git and docker aliases. The plugins' standard
+ones replaced them, and a few of the old names now do something else:
+
+| Alias | Used to | Now |
+| --- | --- | --- |
+| `gp` | `git pull` | `git push` - pull is `gl` |
+| `gcm` | `git commit -m` | check out the main branch - commit is `gcmsg` |
+| `gst` | `git stash` | `git status` - stash is `gsta` |
+| `gs` | `git status` | nothing - use `gst` |
+| `gbc` | delete merged branches, then prune | nothing - `gbda`, then `gfa` |
+| `ghpr` | `gh pr status` | nothing |
+| `dr` | build the current directory and run it | `docker container run` |
+| `drs` | stop every container | `docker container restart` |
+| `drd` | remove every container | nothing |
+| `drp` | `docker system prune` | nothing - use `dsprune` |
+
+Anything you miss can go back in `~/.zshrc.local`, which is sourced after the
+plugins and wins over them.
+
 ### Browserstack
 Points `$CHROME` at the macOS Chrome binary and exports
 `BROWSERSTACK_USERNAME` / `BROWSERSTACK_ACCESS_KEY` when they already hold a
@@ -215,3 +236,6 @@ Every push to `main` and every pull request runs `.github/workflows/ci.yml`:
 - **Run install.sh** (macOS) - runs `install.sh` end to end against a throwaway
   `$HOME`, twice, then checks the installed paths are symlinks into the checkout,
   that oh-my-zsh was cloned, and diffs the linked files against the repo.
+  Then it opens an interactive shell on the installed profile and the real
+  oh-my-zsh - the test suite only uses a stand-in - and fails if anything is
+  written to stderr or the theme and git aliases are missing.

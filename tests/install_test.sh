@@ -585,12 +585,14 @@ test_configure_macos_writes_expected_defaults() {
   assert_stub_called defaults "write com.apple.dock no-bouncing -bool true"
 }
 
-test_configure_macos_survives_a_failing_defaults_write() {
-  # The battery percentage write is expected to fail on recent macOS.
-  # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
-  stub defaults '[[ "$2" == com.apple.menuextra.battery ]] && exit 1; exit 0'
+# com.apple.menuextra.battery ShowPercent used to be written here. It has done
+# nothing since Control Center took over the battery menu in macOS Big Sur.
+test_configure_macos_does_not_write_the_dead_battery_setting() {
+  stub defaults 'exit 0'
   stub killall 'exit 0'
   CI="" configure_macos >/dev/null
+
+  assert_not_contains "$(stub_calls defaults)" "com.apple.menuextra.battery"
 }
 
 # The Dock and Finder only pick the new preferences up when they restart.
