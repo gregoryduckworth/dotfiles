@@ -60,6 +60,23 @@ manager offers; pin one instead with:
 DOTFILES_RUBY_VERSION=3.3.6 DOTFILES_PYTHON_VERSION=3.12.7 ./install.sh
 ```
 
+The Node step clones [nvm](https://github.com/nvm-sh/nvm) into `~/.nvm` at its
+latest release - nvm's own manual install, since nvm does not support the
+Homebrew formula - and runs `nvm install --lts`, so there is no Homebrew
+`node` racing nvm's shims for `$PATH`. A `~/.nvm` left behind by a Homebrew
+nvm (node versions, but no `nvm.sh`) gets nvm fetched into it in place, the
+way nvm's own installer does, so the versions already installed keep working.
+
+### Upgrading an existing machine
+
+`git pull` in the checkout is normally the whole update, but a machine
+bootstrapped when nvm came from Homebrew needs one more step: re-run
+`./install.sh` and answer yes to Node. Until then `scripts/nvm` is gone and
+oh-my-zsh's nvm plugin finds no `nvm.sh` in `~/.nvm`, so new terminals have no
+`node`, `npm` or `npx`. The re-run installs nvm into the existing `~/.nvm`
+without touching the node versions in it; `brew uninstall nvm` afterwards is
+optional.
+
 ## Packages
 
 Packages live in Brewfiles and are installed with `brew bundle`, so adding one
@@ -71,7 +88,6 @@ already-installed check.
 | `Brewfile` | always |
 | `Brewfile.ruby` | when you answer yes to the Ruby prompt |
 | `Brewfile.python` | when you answer yes to the Python prompt |
-| `Brewfile.node` | when you answer yes to the Node prompt |
 
 `brew bundle` has no tag support, so an optional group is a separate file. The
 Ruby and Python ones declare only `rbenv` and `pyenv`: the interpreter itself
@@ -87,29 +103,21 @@ brew bundle cleanup --file=Brewfile # report packages no longer declared
 
 ## Scripts
 
-Every file in `scripts/` is sourced by `.zshrc` on shell startup, in glob
-order, so the filenames decide the order.
+The shell is [oh-my-zsh](https://github.com/ohmyzsh/ohmyzsh) with its standard
+plugins; `scripts/` holds only what oh-my-zsh does not do. Every file in it is
+sourced by `.zshrc` on shell startup, in glob order.
 
 | File | What it sets up |
 | --- | --- |
 | `browserstack` | BrowserStack credentials and the path to Chrome |
-| `completion` | `compinit`, case-insensitive matching, arrow-key menu selection |
 | `editor` | `$EDITOR` and `$VISUAL` |
-| `history` | A 50k-line shared history that dedupes |
-| `homebrew` | Homebrew's curl on `$PATH` |
-| `navigation` | `AUTO_CD` and the directory stack |
-| `nvm` | nvm and its completion |
-| `oh-my-zsh` | oh-my-zsh, when installed |
-| `rbenv` | rbenv and its shims |
+| `oh-my-zsh` | oh-my-zsh, its theme and plugins, when installed |
 | `zsh-plugins` | `zsh-autosuggestions` and `zsh-syntax-highlighting`, when installed |
 
-`oh-my-zsh` is the exception: `.zshrc` sources it by name before the loop, and
-the loop then skips it. See below.
-
-Two of the remaining filenames are load-bearing, and `tests/profile_test.sh`
-guards both: `completion` has to sort before `nvm`, whose completion is loaded
-on top of `compinit`, and `zsh-plugins` has to sort last, because
-`zsh-syntax-highlighting` needs to see the widgets everything else defines.
+`oh-my-zsh` is the exception to the glob order: `.zshrc` sources it by name
+before the loop, and the loop then skips it. `zsh-plugins` has to sort last,
+because `zsh-syntax-highlighting` needs to see the widgets everything else
+defines; `tests/profile_test.sh` guards that.
 
 The plugins in `zsh-plugins` are optional - `install.sh` installs them with the
 general packages, and a shell without them starts normally.
@@ -118,41 +126,50 @@ general packages, and a shell without them starts normally.
 Sourced before everything else in `scripts/`, because it brings aliases,
 options and completions of its own, and anything here - or in
 `~/.zshrc.local` - is meant to win over them. Nothing in `scripts/` redefines
-an oh-my-zsh alias today: the git and docker aliases are the plugins' own.
+an oh-my-zsh alias today.
 
-It is configured, not adopted wholesale:
+Besides the plugins, oh-my-zsh's own `lib/` provides what used to be separate
+files here: completion (`compinit`, menu selection, case-insensitive
+matching), a 50k-line shared history in `~/.zsh_history`, and `AUTO_CD` with
+the directory stack.
 
 - **`ZSH_THEME="robbyrussell"`** - oh-my-zsh's default theme draws the
   prompt, git branch and dirty marker included. Nothing in `scripts/` sets
   `$PROMPT`, and `tests/scripts_test.sh` keeps it that way, since a file
-  sourced after oh-my-zsh would silently replace the theme's. Without
-  oh-my-zsh you get zsh's plain default prompt.
-- **`plugins=(git brew docker gh)`** - completion and the standard aliases
-  for the everyday tools. `git` provides the git aliases - the standard
-  oh-my-zsh set (`gst` status, `gaa` add all, `gl` pull, `gp` push, `gbda`
-  delete merged branches, ...); see `alias | grep git` or the
-  [plugin's README](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/git).
-  `brew` also runs `brew shellenv` when Homebrew is not on `$PATH` yet, which
-  on Apple Silicon is what puts it there: nothing else in this repo, and no
-  `~/.zprofile`, does. `docker` provides the standard docker aliases (`dr`
-  run, `dps` ps, `dsprune` system prune, ...).
+  sourced after oh-my-zsh would silently replace the theme's.
+- **`plugins=(git brew docker gh nvm pyenv rbenv)`** - the standard aliases
+  and completion for the everyday tools, and the version managers loaded:
+  - `git`: the standard git aliases (`gst` status, `gaa` add all, `gl` pull,
+    `gp` push, `gbda` delete merged branches, ...); see `alias | grep git` or
+    the [plugin's README](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/git).
+  - `docker`: the standard docker aliases (`dr` run, `dps` ps, `dsprune`
+    system prune, ...).
+  - `brew`: also runs `brew shellenv` when Homebrew is not on `$PATH` yet,
+    which on Apple Silicon is what puts it there: nothing else in this repo,
+    and no `~/.zprofile`, does.
+  - `nvm`, `pyenv`, `rbenv`: load the version managers `install.sh` sets up,
+    each skipped when its tool is not installed. nvm is lazy-loaded
+    (`zstyle ':omz:plugins:nvm' lazy yes`): loading it was most of the
+    startup time, about 0.65 s of 1 s, so it now loads on the first `nvm`,
+    `node`, `npm`, `npx`, `yarn`, `pnpm` or `corepack` instead. Until then,
+    global npm tools (`tsc`, `eslint`, ...) are not on `$PATH`, and nor are
+    they for git hooks that call them - run `node -v` once in a new terminal
+    first. To lazy-load on a global tool too, add it to the plugin's
+    `lazy-cmd` style in `scripts/oh-my-zsh`; to load eagerly again, delete the
+    `lazy` line. (`~/.zshrc.local` is too late for either: the plugin has
+    already run.)
+- **Homebrew completions.** `scripts/oh-my-zsh` puts Homebrew's
+  `share/zsh/site-functions` on `$fpath` before oh-my-zsh runs `compinit`, as
+  Homebrew's instructions say. The `brew` plugin adds it too, but only after
+  `compinit`, which left `brew`, `docker` and the rest without completion.
 - **`zstyle ':omz:update' mode reminder`** - the default stops and asks, which
   puts a prompt in front of the first command in a new terminal. Run
   `omz update` when it suits.
-- **One completion dump.** oh-my-zsh runs `compinit` itself and would otherwise
-  write its own dump into `$HOME`, so `scripts/oh-my-zsh` points it at the same
-  cache-directory path `scripts/completion` uses, and `scripts/completion`
-  skips the second `compinit` when oh-my-zsh has already run one.
+- **The completion dump** goes under the cache directory
+  (`~/.cache/zsh/zcompdump-<zsh version>`) rather than into `$HOME`.
 
-Like `zsh-plugins`, it is optional at shell startup: a machine without
-`~/.oh-my-zsh` gets a plain shell rather than an error on every prompt.
-
-### Nvm
-nvm owns the node runtime, the way `rbenv` and `pyenv` own theirs: `install.sh`
-installs only `nvm` and then `nvm install --lts`, so there is no
-Homebrew-installed `node` racing nvm's shims for `$PATH`. This script loads nvm
-on every new shell - without it there is no `node` on `$PATH` at all - and finds
-`nvm.sh` whether it came from the Homebrew formula or from nvm's own installer.
+oh-my-zsh is optional at shell startup: a machine without `~/.oh-my-zsh` gets
+zsh's plain defaults rather than an error on every prompt.
 
 ### Browserstack
 Points `$CHROME` at the macOS Chrome binary and exports
@@ -193,8 +210,8 @@ too, so the suite gives the same answer from a fully set-up shell as from CI.
 
 | File | Covers |
 | --- | --- |
-| `tests/install_test.sh` | `install.sh` functions: `brew bundle` installs, the CI/interactive prompt, the symlinks into `$HOME` and their backup and failure paths, the login shell, macOS defaults |
-| `tests/brewfile_test.sh` | the Brewfiles: every one is installed by `install.sh`, and every entry is a directive `brew bundle` understands |
+| `tests/install_test.sh` | `install.sh` functions: `brew bundle` installs, the CI/interactive prompt, the nvm clone, the symlinks into `$HOME` and their backup and failure paths, the login shell, macOS defaults |
+| `tests/brewfile_test.sh` | the Brewfiles: every one is installed by `install.sh`, every entry is a directive `brew bundle` understands, and none declares nvm or node |
 | `tests/profile_test.sh` | `.zshrc`: loading `scripts/`, loading oh-my-zsh first and exactly once, sourcing `~/.zshrc.local` last, and coping with a missing or empty `~/scripts` |
 | `tests/scripts_test.sh` | each file in `scripts/`: parses, exits cleanly, and defines the expected aliases, exports and functions |
 

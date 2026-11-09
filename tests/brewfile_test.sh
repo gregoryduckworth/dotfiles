@@ -11,7 +11,7 @@ set -uo pipefail
 source "$(dirname "$0")/helpers/framework.sh"
 
 # The Brewfiles install.sh installs, one per optional group plus the base set.
-BREWFILES=(Brewfile Brewfile.ruby Brewfile.python Brewfile.node)
+BREWFILES=(Brewfile Brewfile.ruby Brewfile.python)
 
 # Strips comments and blank lines, leaving the entries `brew bundle` acts on.
 entries() {
@@ -85,24 +85,31 @@ test_the_base_brewfile_carries_the_general_packages() {
 # declares the manager and nothing else. A Homebrew ruby or python would be the
 # toolchain rbenv and pyenv are here to keep gems and pip packages out of - pip
 # refuses to touch a Homebrew python at all
-# (error: externally-managed-environment) - and a Homebrew node would race
-# nvm's shims for $PATH.
+# (error: externally-managed-environment).
 test_the_language_groups_declare_only_a_version_manager() {
-  local ruby python node
+  local ruby python
   ruby="$(entries Brewfile.ruby)"
   python="$(entries Brewfile.python)"
-  node="$(entries Brewfile.node)"
 
   assert_contains "$ruby" 'brew "rbenv"'
   assert_not_contains "$ruby" 'brew "ruby'
 
   assert_contains "$python" 'brew "pyenv"'
   assert_not_contains "$python" 'brew "python'
+}
 
-  assert_contains "$node" 'brew "nvm"'
-  assert_not_contains "$node" 'brew "node"'
-  # brew's npm is an alias for the node formula, not a formula of its own.
-  assert_not_contains "$node" 'brew "npm"'
+# install.sh clones nvm itself (nvm does not support the formula), and a
+# Homebrew node or npm - npm is only an alias for the node formula - would race
+# nvm's shims for $PATH.
+test_no_brewfile_declares_nvm_or_node() {
+  local brewfile all=""
+  for brewfile in "${BREWFILES[@]}"; do
+    all+="$(entries "$brewfile")"$'\n'
+  done
+
+  assert_not_contains "$all" 'brew "nvm"'
+  assert_not_contains "$all" 'brew "node'
+  assert_not_contains "$all" 'brew "npm"'
 }
 
 # Groups stay opt-in, so nothing a group installs may leak into the base set.
@@ -112,7 +119,6 @@ test_the_base_brewfile_carries_no_group_packages() {
 
   assert_not_contains "$base" 'brew "rbenv"'
   assert_not_contains "$base" 'brew "pyenv"'
-  assert_not_contains "$base" 'brew "nvm"'
 }
 
 run_tests "$@"

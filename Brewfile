@@ -4,8 +4,9 @@
 #   brew bundle check --file=Brewfile   # dry run: what is missing?
 #   brew bundle cleanup --file=Brewfile # report packages no longer declared
 #
-# The optional per-language groups live in Brewfile.ruby, Brewfile.python and
-# Brewfile.node. `brew bundle` has no tag support, so a group is a file.
+# The optional per-language groups live in Brewfile.ruby and Brewfile.python.
+# `brew bundle` has no tag support, so a group is a file. Node has no Brewfile:
+# install.sh clones nvm itself.
 
 brew "git"
 brew "gh"

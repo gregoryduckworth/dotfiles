@@ -8,7 +8,7 @@
 # everything else defines - zsh-autosuggestions below included.
 
 # brew shellenv exports HOMEBREW_PREFIX; fall back to probing the two standard
-# prefixes, the same way scripts/homebrew does, rather than shelling out to
+# prefixes, the same way scripts/oh-my-zsh does, rather than shelling out to
 # `brew --prefix` on every shell startup.
 if [[ -n "${HOMEBREW_PREFIX:-}" ]]; then
   zsh_plugin_dir="$HOMEBREW_PREFIX/share"

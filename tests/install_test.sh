@@ -463,94 +463,165 @@ test_source_profile_rejects_invalid_zsh() {
   assert_missing "$HOME/.zshrc"
 }
 
-## ---------- node_install / nvm_script_path ---------- ##
+## ---------- node_install ---------- ##
 
 # Stands in for a real nvm.sh: defines `nvm` as the shell function it actually
 # is, which is why node_install has to source anything at all, and records the
-# calls where assert_stub_called can find them.
+# calls where assert_stub_called can find them. [status] is what nvm returns.
 fake_nvm_script() {
   mkdir -p "$1"
-  cat >"$1/nvm.sh" <<'NVM_SH'
+  cat >"$1/nvm.sh" <<NVM_SH
 nvm() {
-  printf '%s\n' "$*" >>"$STUB_CALLS/nvm"
+  printf '%s\n' "\$*" >>"\$STUB_CALLS/nvm"
+  return ${2:-0}
 }
 NVM_SH
 }
 
-test_node_install_installs_nvm_and_nothing_else() {
-  stub brew 'exit 0'
-  fake_nvm_script "$HOME/.nvm"
+# A git that "clones" nvm by creating the target, "inits" one by creating its
+# .git, reports v0.40.3 as the newest release tag, and drops a fake nvm.sh in
+# on checkout. [failing] names a -C subcommand to fail instead.
+stub_nvm_git() {
+  fake_nvm_script "$TEST_TMP/nvm-release"
+  # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
+  stub git '
+    case "$1" in
+      clone) mkdir -p "$4/.git" ;;
+      -C)
+        [[ "$3" == "'"${1:-}"'" ]] && exit 1
+        case "$3" in
+          init) mkdir -p "$2/.git" ;;
+          rev-list) echo 0123abc ;;
+          describe) echo v0.40.3 ;;
+          checkout) cp "$TEST_TMP/nvm-release/nvm.sh" "$2/" ;;
+        esac
+        ;;
+    esac
+    exit 0'
+}
+
+test_node_install_clones_nvm_at_its_latest_release() {
+  stub_nvm_git
   node_install >/dev/null
 
-  # A brew node would race nvm's shims for $PATH, and brew's npm is only an
-  # alias for the node formula, so it would install node a second time.
-  # Brewfile.node declares nvm alone (see brewfile_test.sh), so the bundle is
-  # the only thing node_install has Homebrew install.
-  assert_stub_called brew "bundle --file=$REPO_ROOT/Brewfile.node"
-  assert_not_contains "$(stub_calls brew)" "install"
+  assert_stub_called git "clone --quiet $NVM_REPO $HOME/.nvm"
+  # The default branch is nvm's development line, not a release.
+  assert_stub_called git "-C $HOME/.nvm checkout --quiet v0.40.3"
 }
 
 test_node_install_installs_the_lts_and_makes_it_the_default() {
-  stub brew 'exit 0'
-  fake_nvm_script "$HOME/.nvm"
+  stub_nvm_git
   node_install >/dev/null
 
   assert_stub_called nvm "install --lts"
   assert_stub_called nvm "alias default lts/*"
 }
 
-test_node_install_loads_nvm_from_the_homebrew_prefix() {
-  NVM_TEST_PREFIX="$TEST_TMP/homebrew/opt/nvm"
-  export NVM_TEST_PREFIX
-  fake_nvm_script "$NVM_TEST_PREFIX"
-  # brew installs the bundle, then hands out the formula's prefix.
-  # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
-  stub brew '[[ "$1" == --prefix ]] && echo "$NVM_TEST_PREFIX"; exit 0'
+test_node_install_installs_nothing_from_homebrew() {
+  # nvm does not support the Homebrew formula, and a Homebrew node would race
+  # nvm's shims for $PATH.
+  stub brew 'exit 0'
+  stub_nvm_git
   node_install >/dev/null
 
-  assert_stub_called nvm "install --lts"
-  # The formula does not create $NVM_DIR, and nvm needs it to exist before it
-  # can install a runtime into it.
-  [[ -d "$HOME/.nvm" ]] || fail "expected \$NVM_DIR at $HOME/.nvm"
+  assert_eq "" "$(stub_calls brew)" "node_install ran brew"
 }
 
-test_node_install_fails_when_nvm_cannot_be_loaded() {
-  # Nothing installs for real in the sandbox, so nvm.sh is nowhere to be found.
-  stub brew 'exit 0'
+test_node_install_leaves_an_existing_nvm_alone() {
+  stub git 'exit 0'
+  fake_nvm_script "$HOME/.nvm"
+  node_install >/dev/null
+
+  assert_eq "" "$(stub_calls git)" "git ran with nvm already installed"
+  assert_stub_called nvm "install --lts"
+}
+
+# What a Homebrew nvm leaves behind: node versions in ~/.nvm, but no nvm.sh.
+homebrew_nvm_dir() {
+  mkdir -p "$HOME/.nvm/versions/node/v20.0.0/bin"
+  echo "a node" >"$HOME/.nvm/versions/node/v20.0.0/bin/node"
+}
+
+test_node_install_installs_nvm_around_an_existing_nvm_dir() {
+  homebrew_nvm_dir
+  stub_nvm_git
+  node_install >/dev/null || fail "node_install failed"
+
+  # Cloning into a non-empty directory fails, and moving it aside would lose
+  # the node versions, so nvm is fetched into it in place, as nvm's own
+  # installer does.
+  assert_stub_called git "-C $HOME/.nvm init --quiet"
+  assert_stub_called git "-C $HOME/.nvm remote add origin $NVM_REPO"
+  assert_stub_called git "-C $HOME/.nvm fetch --quiet --tags origin"
+  assert_stub_called git "-C $HOME/.nvm checkout --quiet v0.40.3"
+  assert_not_contains "$(stub_calls git)" "clone"
+  assert_file "$HOME/.nvm/nvm.sh"
+  assert_eq "a node" "$(cat "$HOME/.nvm/versions/node/v20.0.0/bin/node")"
+  assert_stub_called nvm "install --lts"
+}
+
+test_node_install_retries_cleanly_after_a_failed_in_place_fetch() {
+  homebrew_nvm_dir
+  stub_nvm_git fetch
+  local output status=0
+  output="$(node_install 2>&1)" || status=$?
+
+  assert_eq "1" "$status" "node_install did not fail"
+  assert_contains "$output" "could not fetch nvm"
+  assert_file "$HOME/.nvm/versions/node/v20.0.0/bin/node"
+  # Its own half-made .git goes again, or the next run would refuse a
+  # directory that is now a git checkout.
+  assert_missing "$HOME/.nvm/.git"
+}
+
+test_node_install_refuses_a_checkout_without_nvm_sh() {
+  mkdir -p "$HOME/.nvm/.git"
+  stub_nvm_git
+  local output status=0
+  output="$(node_install 2>&1)" || status=$?
+
+  assert_eq "1" "$status" "node_install did not fail"
+  assert_contains "$output" "is a git checkout with no nvm.sh"
+  assert_eq "" "$(stub_calls git)" "git ran over an existing checkout"
+}
+
+test_node_install_propagates_a_failing_clone() {
+  stub git 'exit 1'
+
+  assert_failure node_install
+  assert_missing "$HOME/.nvm/nvm.sh"
+}
+
+test_node_install_fails_when_the_lts_install_fails() {
+  fake_nvm_script "$HOME/.nvm" 1
 
   assert_failure node_install
 }
 
-test_nvm_script_path_prefers_an_existing_nvm_dir() {
-  NVM_DIR="$HOME/.nvm"
-  NVM_TEST_PREFIX="$TEST_TMP/homebrew/opt/nvm"
-  export NVM_DIR NVM_TEST_PREFIX
-  fake_nvm_script "$NVM_DIR"
-  fake_nvm_script "$NVM_TEST_PREFIX"
-  # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
-  stub brew 'echo "$NVM_TEST_PREFIX"'
+test_dry_run_reports_the_nvm_install_without_doing_it() {
+  stub git 'exit 0'
+  DRY_RUN=1
+  local output
+  output="$(node_install)"
 
-  assert_eq "$NVM_DIR/nvm.sh" "$(nvm_script_path)"
+  assert_contains "$output" "[dry-run] git clone --quiet $NVM_REPO $HOME/.nvm"
+  assert_contains "$output" "[dry-run] git -C $HOME/.nvm checkout --quiet <latest release>"
+  assert_contains "$output" "[dry-run] nvm install --lts"
+  assert_eq "" "$(stub_calls git)" "--dry-run ran git"
+  assert_missing "$HOME/.nvm"
 }
 
-test_nvm_script_path_falls_back_to_the_homebrew_prefix() {
-  NVM_DIR="$HOME/.nvm"
-  NVM_TEST_PREFIX="$TEST_TMP/homebrew/opt/nvm"
-  export NVM_DIR NVM_TEST_PREFIX
-  fake_nvm_script "$NVM_TEST_PREFIX"
-  # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
-  stub brew 'echo "$NVM_TEST_PREFIX"'
+test_dry_run_reports_the_in_place_nvm_install_without_doing_it() {
+  homebrew_nvm_dir
+  stub git 'exit 0'
+  DRY_RUN=1
+  local output
+  output="$(node_install)"
 
-  assert_eq "$NVM_TEST_PREFIX/nvm.sh" "$(nvm_script_path)"
-}
-
-test_nvm_script_path_fails_when_nvm_sh_is_missing() {
-  NVM_DIR="$HOME/.nvm"
-  export NVM_DIR
-  # A brew that does not know the formula, as on a machine without nvm.
-  stub brew 'exit 1'
-
-  assert_failure nvm_script_path
+  assert_contains "$output" "[dry-run] git -C $HOME/.nvm init --quiet"
+  assert_contains "$output" "[dry-run] git -C $HOME/.nvm fetch --quiet --tags origin"
+  assert_eq "" "$(stub_calls git)" "--dry-run ran git"
+  assert_missing "$HOME/.nvm/.git"
 }
 
 ## ---------- configure_macos ---------- ##
