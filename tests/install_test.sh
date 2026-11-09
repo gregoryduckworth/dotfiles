@@ -478,18 +478,22 @@ nvm() {
 NVM_SH
 }
 
-# A git that "clones" nvm by dropping a fake nvm.sh into the target, and
-# reports v0.40.3 as the newest release tag.
+# A git that "clones" nvm by creating the target, "inits" one by creating its
+# .git, reports v0.40.3 as the newest release tag, and drops a fake nvm.sh in
+# on checkout. [failing] names a -C subcommand to fail instead.
 stub_nvm_git() {
   fake_nvm_script "$TEST_TMP/nvm-release"
   # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
   stub git '
     case "$1" in
-      clone) mkdir -p "$4" && cp "$TEST_TMP/nvm-release/nvm.sh" "$4/" ;;
+      clone) mkdir -p "$4/.git" ;;
       -C)
+        [[ "$3" == "'"${1:-}"'" ]] && exit 1
         case "$3" in
+          init) mkdir -p "$2/.git" ;;
           rev-list) echo 0123abc ;;
           describe) echo v0.40.3 ;;
+          checkout) cp "$TEST_TMP/nvm-release/nvm.sh" "$2/" ;;
         esac
         ;;
     esac
@@ -532,18 +536,53 @@ test_node_install_leaves_an_existing_nvm_alone() {
   assert_stub_called nvm "install --lts"
 }
 
-test_node_install_refuses_an_nvm_dir_without_nvm_sh() {
-  # What a Homebrew nvm leaves behind: node versions, but no nvm.sh. Cloning
-  # into it would fail, and moving it would lose the versions.
-  mkdir -p "$HOME/.nvm/versions/node"
-  stub git 'exit 0'
+# What a Homebrew nvm leaves behind: node versions in ~/.nvm, but no nvm.sh.
+homebrew_nvm_dir() {
+  mkdir -p "$HOME/.nvm/versions/node/v20.0.0/bin"
+  echo "a node" >"$HOME/.nvm/versions/node/v20.0.0/bin/node"
+}
+
+test_node_install_installs_nvm_around_an_existing_nvm_dir() {
+  homebrew_nvm_dir
+  stub_nvm_git
+  node_install >/dev/null || fail "node_install failed"
+
+  # Cloning into a non-empty directory fails, and moving it aside would lose
+  # the node versions, so nvm is fetched into it in place, as nvm's own
+  # installer does.
+  assert_stub_called git "-C $HOME/.nvm init --quiet"
+  assert_stub_called git "-C $HOME/.nvm remote add origin $NVM_REPO"
+  assert_stub_called git "-C $HOME/.nvm fetch --quiet --tags origin"
+  assert_stub_called git "-C $HOME/.nvm checkout --quiet v0.40.3"
+  assert_not_contains "$(stub_calls git)" "clone"
+  assert_file "$HOME/.nvm/nvm.sh"
+  assert_eq "a node" "$(cat "$HOME/.nvm/versions/node/v20.0.0/bin/node")"
+  assert_stub_called nvm "install --lts"
+}
+
+test_node_install_retries_cleanly_after_a_failed_in_place_fetch() {
+  homebrew_nvm_dir
+  stub_nvm_git fetch
   local output status=0
   output="$(node_install 2>&1)" || status=$?
 
   assert_eq "1" "$status" "node_install did not fail"
-  assert_contains "$output" "move it aside"
-  assert_eq "" "$(stub_calls git)" "git ran over an existing ~/.nvm"
-  [[ -d "$HOME/.nvm/versions/node" ]] || fail "the existing ~/.nvm was touched"
+  assert_contains "$output" "could not fetch nvm"
+  assert_file "$HOME/.nvm/versions/node/v20.0.0/bin/node"
+  # Its own half-made .git goes again, or the next run would refuse a
+  # directory that is now a git checkout.
+  assert_missing "$HOME/.nvm/.git"
+}
+
+test_node_install_refuses_a_checkout_without_nvm_sh() {
+  mkdir -p "$HOME/.nvm/.git"
+  stub_nvm_git
+  local output status=0
+  output="$(node_install 2>&1)" || status=$?
+
+  assert_eq "1" "$status" "node_install did not fail"
+  assert_contains "$output" "is a git checkout with no nvm.sh"
+  assert_eq "" "$(stub_calls git)" "git ran over an existing checkout"
 }
 
 test_node_install_propagates_a_failing_clone() {
@@ -570,6 +609,19 @@ test_dry_run_reports_the_nvm_install_without_doing_it() {
   assert_contains "$output" "[dry-run] nvm install --lts"
   assert_eq "" "$(stub_calls git)" "--dry-run ran git"
   assert_missing "$HOME/.nvm"
+}
+
+test_dry_run_reports_the_in_place_nvm_install_without_doing_it() {
+  homebrew_nvm_dir
+  stub git 'exit 0'
+  DRY_RUN=1
+  local output
+  output="$(node_install)"
+
+  assert_contains "$output" "[dry-run] git -C $HOME/.nvm init --quiet"
+  assert_contains "$output" "[dry-run] git -C $HOME/.nvm fetch --quiet --tags origin"
+  assert_eq "" "$(stub_calls git)" "--dry-run ran git"
+  assert_missing "$HOME/.nvm/.git"
 }
 
 ## ---------- configure_macos ---------- ##
