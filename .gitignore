@@ -16,5 +16,5 @@
 *~
 
 # A literal `~` directory, created by an unquoted tilde that was meant to
-# expand to $HOME. One got committed once already (see issue #10).
+# expand to $HOME.
 ~/

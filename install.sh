@@ -257,8 +257,6 @@ install_check() {
         break
         ;;
       # $yn is empty for anything that is not one of the listed numbers.
-      # Without this branch the prompt simply reappeared, with no hint that the
-      # answer was not understood or that Ctrl-D is the way out.
       *) echo "'$REPLY' is not one of the choices. Enter 1 for Yes, 2 for No, or Ctrl-D to skip $1." ;;
     esac
   done || true # select exits non-zero at end of input (Ctrl-D)

@@ -128,10 +128,9 @@ options and completions of its own, and anything here - or in
 `~/.zshrc.local` - is meant to win over them. Nothing in `scripts/` redefines
 an oh-my-zsh alias today.
 
-Besides the plugins, oh-my-zsh's own `lib/` provides what used to be separate
-files here: completion (`compinit`, menu selection, case-insensitive
-matching), a 50k-line shared history in `~/.zsh_history`, and `AUTO_CD` with
-the directory stack.
+Besides the plugins, oh-my-zsh's own `lib/` provides completion (`compinit`,
+menu selection, case-insensitive matching), a 50k-line shared history in
+`~/.zsh_history`, and `AUTO_CD` with the directory stack.
 
 - **`ZSH_THEME="robbyrussell"`** - oh-my-zsh's default theme draws the
   prompt, git branch and dirty marker included. Nothing in `scripts/` sets
@@ -170,27 +169,6 @@ the directory stack.
 
 oh-my-zsh is optional at shell startup: a machine without `~/.oh-my-zsh` gets
 zsh's plain defaults rather than an error on every prompt.
-
-#### Aliases that changed meaning
-
-This repo used to define its own git and docker aliases. The plugins' standard
-ones replaced them, and a few of the old names now do something else:
-
-| Alias | Used to | Now |
-| --- | --- | --- |
-| `gp` | `git pull` | `git push` - pull is `gl` |
-| `gcm` | `git commit -m` | check out the main branch - commit is `gcmsg` |
-| `gst` | `git stash` | `git status` - stash is `gsta` |
-| `gs` | `git status` | nothing - use `gst` |
-| `gbc` | delete merged branches, then prune | nothing - `gbda`, then `gfa` |
-| `ghpr` | `gh pr status` | nothing |
-| `dr` | build the current directory and run it | `docker container run` |
-| `drs` | stop every container | `docker container restart` |
-| `drd` | remove every container | nothing |
-| `drp` | `docker system prune` | nothing - use `dsprune` |
-
-Anything you miss can go back in `~/.zshrc.local`, which is sourced after the
-plugins and wins over them.
 
 ### Browserstack
 Points `$CHROME` at the macOS Chrome binary and exports
