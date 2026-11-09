@@ -11,6 +11,11 @@ if [[ -r "$ZSH/oh-my-zsh.sh" ]]; then
   # git and docker: the standard aliases (gst, gaa, gl, gp, gbda, dr, dps, ...).
   # nvm, pyenv and rbenv: load the version managers install.sh sets up.
   plugins=(git brew docker gh nvm pyenv rbenv)
+  # Loading nvm is most of the shell's startup time, so defer it until the
+  # first nvm, node, npm, npx, yarn, pnpm or corepack. Until then, global npm
+  # tools (tsc, eslint, ...) and git hooks that call them are not on $PATH;
+  # run `node -v` or `nvm use` first. Has to be set before the plugin loads.
+  zstyle ':omz:plugins:nvm' lazy yes
   # The default mode asks before updating, on the first prompt of a new shell.
   zstyle ':omz:update' mode reminder
 

@@ -142,6 +142,14 @@ test_oh_my_zsh_enables_the_expected_plugins() {
   assert_eq "git brew docker gh nvm pyenv rbenv" "$plugins"
 }
 
+test_oh_my_zsh_lazy_loads_nvm() {
+  skip_unless_command zsh
+  fake_oh_my_zsh
+  # Loading nvm is most of a new shell's startup time.
+  assert_eq "yes" \
+    "$(zsh_script oh-my-zsh 'zstyle -t ":omz:plugins:nvm" lazy && echo yes')"
+}
+
 test_oh_my_zsh_does_not_prompt_to_update() {
   skip_unless_command zsh
   fake_oh_my_zsh
