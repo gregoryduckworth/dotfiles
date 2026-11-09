@@ -137,6 +137,36 @@ test_profile_is_quiet_with_oh_my_zsh_installed() {
   assert_eq "" "$errors" ".zshrc wrote to stderr with oh-my-zsh installed"
 }
 
+## ---------- ~/.zprofile ---------- ##
+
+test_zprofile_parses_as_zsh() {
+  skip_unless_command zsh
+  zsh -n "$REPO_ROOT/.zprofile" || fail ".zprofile is not valid zsh"
+}
+
+test_zprofile_puts_homebrew_on_the_path_of_a_login_shell() {
+  skip_unless_command zsh
+  local brew_bin
+  for brew_bin in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+    [[ -x "$brew_bin" ]] && break
+    brew_bin=""
+  done
+  if [[ -z "$brew_bin" ]]; then
+    echo "skipped: Homebrew is not installed" >&2
+    exit 100
+  fi
+
+  # A login shell that never reaches .zshrc, with no Homebrew on $PATH yet.
+  assert_eq "$brew_bin" \
+    "$(PATH=/usr/bin:/bin zsh -c "source '$REPO_ROOT/.zprofile'; whence -p brew")"
+}
+
+test_zprofile_leaves_no_loop_variable_behind() {
+  skip_unless_command zsh
+  assert_eq "unset" \
+    "$(zsh -c "source '$REPO_ROOT/.zprofile'; [[ -z \${brew_bin+set} ]] && echo unset")"
+}
+
 ## ---------- ~/.zshrc.local ---------- ##
 
 test_profile_sources_the_local_override_last() {

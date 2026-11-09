@@ -25,9 +25,10 @@ usage() {
 Usage: install.sh [options]
 
 Bootstraps a machine: installs Homebrew, offers each group of optional
-dependencies in turn, installs oh-my-zsh, symlinks scripts/ and .zshrc into
-$HOME, includes the shared git settings from ~/.gitconfig, installs Claude
-Code, makes zsh the login shell, and writes a few macOS defaults.
+dependencies in turn, installs oh-my-zsh, symlinks scripts/, .zshrc and
+.zprofile into $HOME, includes the shared git settings from ~/.gitconfig,
+installs Claude Code, makes zsh the login shell, and writes a few macOS
+defaults.
 
 Options:
   -n, --dry-run  Print the commands that would change the machine, and run
@@ -161,15 +162,18 @@ link_into_checkout() {
   run ln -sfn "$target" "$link"
 }
 
-# Link the profile and scripts into $HOME
+# Link the profiles and scripts into $HOME
 source_profile() {
-  echo "Linking .$1 and scripts into \$HOME..."
+  local profile
 
-  # Check if source files exist
-  if [[ ! -f "$SCRIPT_DIR/.$1" ]]; then
-    echo "Error: .$1 not found"
-    return 1
-  fi
+  echo "Linking .$1, .zprofile and scripts into \$HOME..."
+
+  for profile in ".$1" .zprofile; do
+    if [[ ! -f "$SCRIPT_DIR/$profile" ]]; then
+      echo "Error: $profile not found"
+      return 1
+    fi
+  done
 
   if [[ ! -d "$SCRIPT_DIR/scripts" ]]; then
     echo "Error: scripts directory not found"
@@ -181,15 +185,18 @@ source_profile() {
   # Parse it instead, and let the user pick the profile up in a new shell.
   # Checked before linking so a broken profile is never what $HOME points at.
   if command -v zsh &>/dev/null; then
-    echo "Validating .$1..."
-    if ! zsh -n "$SCRIPT_DIR/.$1"; then
-      echo "Error: .$1 is not valid zsh"
-      return 1
-    fi
+    for profile in ".$1" .zprofile; do
+      echo "Validating $profile..."
+      if ! zsh -n "$SCRIPT_DIR/$profile"; then
+        echo "Error: $profile is not valid zsh"
+        return 1
+      fi
+    done
   fi
 
   link_into_checkout "$SCRIPT_DIR/scripts" "$HOME/scripts"
   link_into_checkout "$SCRIPT_DIR/.$1" "$HOME/.$1"
+  link_into_checkout "$SCRIPT_DIR/.zprofile" "$HOME/.zprofile"
 
   echo "Run 'exec zsh' or open a new terminal to load .$1"
 }
@@ -199,12 +206,22 @@ source_profile() {
 # ~/.gitconfig. The include is appended, so its settings win over the same keys
 # set earlier in ~/.gitconfig.
 git_config_install() {
-  local gitconfig="$SCRIPT_DIR/gitconfig"
+  local gitconfig="$SCRIPT_DIR/gitconfig" key mine shared
 
   if git config --global --get-all include.path 2>/dev/null | grep -Fqx "$gitconfig"; then
     echo "$HOME/.gitconfig already includes $gitconfig"
     return 0
   fi
+
+  # Say which of the user's own settings are about to lose, rather than let
+  # them change underfoot.
+  while IFS= read -r key; do
+    mine="$(git config --global --no-includes --get "$key" 2>/dev/null)" || continue
+    shared="$(git config --file "$gitconfig" --get "$key")"
+    if [[ "$mine" != "$shared" ]]; then
+      echo "Note: ~/.gitconfig sets $key=$mine; the shared gitconfig's $key=$shared will win"
+    fi
+  done < <(git config --file "$gitconfig" --name-only --list)
 
   echo "Including $gitconfig from ~/.gitconfig..."
   run git config --global --add include.path "$gitconfig"
@@ -427,7 +444,7 @@ python_install() {
 # nvm does not support the formula, and oh-my-zsh's nvm plugin, which loads it
 # in every shell, only looks for nvm.sh in $NVM_DIR.
 nvm_install() {
-  local tag
+  local tag in_place=0
 
   if [[ -s "$NVM_DIR/nvm.sh" ]]; then
     echo "nvm is already installed at $NVM_DIR"
@@ -451,14 +468,13 @@ nvm_install() {
     # but nvm.sh elsewhere. Install nvm around them, the way nvm's own
     # installer does for an existing directory, so they keep working.
     echo "Installing nvm into the existing $NVM_DIR, keeping its node versions..."
+    in_place=1
     if ! {
       run git -C "$NVM_DIR" init --quiet &&
         run git -C "$NVM_DIR" remote add origin "$NVM_REPO" &&
         run git -C "$NVM_DIR" fetch --quiet --tags origin
     }; then
-      # Take the half-made checkout back out, so a re-run tries again rather
-      # than refusing a directory that is now a git checkout.
-      run rm -rf "${NVM_DIR:?}/.git"
+      nvm_undo_in_place_install
       echo "Error: could not fetch nvm into $NVM_DIR"
       return 1
     fi
@@ -470,13 +486,22 @@ nvm_install() {
     tag="<latest release>"
   elif ! tag="$(git -C "$NVM_DIR" describe --abbrev=0 --tags --match 'v[0-9]*' \
     "$(git -C "$NVM_DIR" rev-list --tags --max-count=1)")"; then
+    [[ $in_place -eq 1 ]] && nvm_undo_in_place_install
     echo "Error: could not find an nvm release to check out"
     return 1
   fi
   if ! run git -C "$NVM_DIR" checkout --quiet "$tag"; then
+    [[ $in_place -eq 1 ]] && nvm_undo_in_place_install
     echo "Error: could not check out nvm $tag"
     return 1
   fi
+}
+
+# Takes a half-made in-place checkout back out of $NVM_DIR, leaving its node
+# versions, so a re-run tries again rather than refusing a directory that is
+# now a git checkout with no nvm.sh in it.
+nvm_undo_in_place_install() {
+  run rm -rf "${NVM_DIR:?}/.git"
 }
 
 node_install() {
@@ -506,8 +531,13 @@ node_install() {
 configure_macos() {
   echo "Configuring macOS..."
 
-  # Set fast key repeat rate
+  # Fast key repeat (the fastest the System Settings slider offers), starting
+  # after the shortest delay the slider offers.
   run defaults write NSGlobalDomain KeyRepeat -int 2
+  run defaults write NSGlobalDomain InitialKeyRepeat -int 15
+  # Holding a key repeats it in every app, instead of opening the accent picker
+  # in most of them.
+  run defaults write NSGlobalDomain ApplePressAndHoldEnabled -bool false
 
   # Require password as soon as screensaver or sleep mode starts
   run defaults write com.apple.screensaver askForPassword -int 1
