@@ -6,10 +6,10 @@
 ZSH="${ZSH:-$HOME/.oh-my-zsh}"
 
 if [[ -r "$ZSH/oh-my-zsh.sh" ]]; then
-  # scripts/git owns $PROMPT.
-  ZSH_THEME=""
-  # No git plugin: scripts/github owns the git aliases.
-  plugins=(brew docker gh)
+  # The prompt, including the git branch. Nothing in ~/scripts sets $PROMPT.
+  ZSH_THEME="robbyrussell"
+  # git: the standard git aliases (gst, gaa, gl, gp, gbda, ...).
+  plugins=(git brew docker gh)
   # The default mode asks before updating, on the first prompt of a new shell.
   zstyle ':omz:update' mode reminder
 

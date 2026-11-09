@@ -124,6 +124,12 @@ _run_one() (
   PATH="$STUB_BIN:$PATH"
   export TEST_TMP HOME STUB_BIN STUB_CALLS PATH
 
+  # Settings the profile and install.sh read, which a shell that has already
+  # loaded oh-my-zsh, nvm and friends exports. Left in place they point the
+  # tests at the real ~/.oh-my-zsh, ~/.nvm and cache rather than the sandbox.
+  unset ZSH ZSH_CUSTOM ZSH_CACHE_DIR ZSH_COMPDUMP NVM_DIR XDG_CACHE_HOME \
+    EDITOR VISUAL
+
   cd "$REPO_ROOT"
   "$1"
 )

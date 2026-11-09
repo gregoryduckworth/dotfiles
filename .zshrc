@@ -16,7 +16,8 @@ alias sz='source ~/.zshrc'
 
 # Machine-specific settings and secrets live in ~/.zshrc.local, sourced last so
 # it wins over everything above. It is never tracked by this repo, which keeps
-# real credentials out of `git status` and so out of a stray `gaa` (`git add .`).
+# real credentials out of `git status` and so out of a stray `gaa`
+# (`git add --all`).
 if [[ -f ~/.zshrc.local ]]; then
   source ~/.zshrc.local
 fi

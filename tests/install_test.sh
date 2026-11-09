@@ -113,6 +113,90 @@ test_dry_run_reports_the_oh_my_zsh_clone_without_running_it() {
   assert_missing "$HOME/.oh-my-zsh"
 }
 
+## ---------- set_login_shell ---------- ##
+
+# stub_login_shell <shell>: an account database that says the login shell is
+# <shell>, a sandboxed zsh and /etc/shells listing it, and a chsh to call.
+stub_login_shell() {
+  stub dscl "echo 'UserShell: $1'"
+  stub chsh 'exit 0'
+  SYSTEM_ZSH="$TEST_TMP/zsh"
+  printf '#!/bin/sh\n' >"$SYSTEM_ZSH"
+  chmod +x "$SYSTEM_ZSH"
+  SHELLS_FILE="$TEST_TMP/shells"
+  printf '/bin/bash\n%s\n' "$SYSTEM_ZSH" >"$SHELLS_FILE"
+}
+
+test_set_login_shell_switches_a_bash_login_shell_to_zsh() {
+  stub_login_shell /bin/bash
+  CI="" set_login_shell >/dev/null
+
+  assert_stub_called chsh "-s $SYSTEM_ZSH"
+}
+
+test_set_login_shell_leaves_a_zsh_login_shell_alone() {
+  # Any zsh will do, the Homebrew one included: there is nothing to fix.
+  stub_login_shell /opt/homebrew/bin/zsh
+  CI="" set_login_shell >/dev/null
+
+  assert_eq "" "$(stub_calls chsh)" "chsh ran with zsh already the login shell"
+}
+
+test_set_login_shell_lists_zsh_in_etc_shells_before_chsh() {
+  stub_login_shell /bin/bash
+  # chsh rejects a shell /etc/shells does not list.
+  printf '/bin/bash\n' >"$SHELLS_FILE"
+  # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
+  stub sudo '"$@"'
+  CI="" set_login_shell >/dev/null
+
+  assert_stub_called sudo "tee -a $SHELLS_FILE"
+  assert_eq "1" "$(grep -cFx "$SYSTEM_ZSH" "$SHELLS_FILE")"
+  assert_stub_called chsh "-s $SYSTEM_ZSH"
+}
+
+test_set_login_shell_falls_back_to_the_zsh_on_the_path() {
+  stub_login_shell /bin/bash
+  stub zsh 'exit 0'
+  SYSTEM_ZSH="$TEST_TMP/no-such-zsh"
+  printf '%s\n' "$STUB_BIN/zsh" >"$SHELLS_FILE"
+  CI="" set_login_shell >/dev/null
+
+  assert_stub_called chsh "-s $STUB_BIN/zsh"
+}
+
+test_set_login_shell_survives_a_failing_chsh() {
+  stub_login_shell /bin/bash
+  # A mistyped password must not abort the rest of the bootstrap.
+  stub chsh 'exit 1'
+  local output
+  output="$(CI="" set_login_shell 2>&1)" || fail "a failing chsh aborted the bootstrap"
+
+  assert_contains "$output" "chsh -s $SYSTEM_ZSH"
+}
+
+test_set_login_shell_does_not_run_in_ci() {
+  stub_login_shell /bin/bash
+  CI=1 set_login_shell >/dev/null
+
+  assert_eq "" "$(stub_calls chsh)" "CI changed the login shell"
+}
+
+test_dry_run_reports_the_login_shell_change_without_making_it() {
+  stub_login_shell /bin/bash
+  printf '/bin/bash\n' >"$SHELLS_FILE"
+  stub sudo 'exit 0'
+  DRY_RUN=1
+  local output
+  output="$(CI="" set_login_shell)"
+
+  assert_contains "$output" "[dry-run] echo $SYSTEM_ZSH | sudo tee -a $SHELLS_FILE"
+  assert_contains "$output" "[dry-run] chsh -s $SYSTEM_ZSH"
+  assert_eq "" "$(stub_calls sudo)" "--dry-run ran sudo"
+  assert_eq "" "$(stub_calls chsh)" "--dry-run ran chsh"
+  assert_eq "/bin/bash" "$(cat "$SHELLS_FILE")" "--dry-run edited /etc/shells"
+}
+
 ## ---------- install_check ---------- ##
 
 test_install_check_skips_prompt_in_ci() {
@@ -278,7 +362,7 @@ test_source_profile_links_profile_and_scripts() {
   # `git pull` the whole update, with no second copy left to go stale.
   assert_symlink "$HOME/scripts" "$REPO_ROOT/scripts"
   assert_symlink "$HOME/.zshrc" "$REPO_ROOT/.zshrc"
-  assert_file "$HOME/scripts/git"
+  assert_file "$HOME/scripts/oh-my-zsh"
   diff "$REPO_ROOT/.zshrc" "$HOME/.zshrc" || fail "installed .zshrc differs"
   diff -r "$REPO_ROOT/scripts" "$HOME/scripts" || fail "installed scripts differ"
 }

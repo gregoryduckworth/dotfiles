@@ -54,204 +54,6 @@ test_docker_enables_buildkit() {
   assert_eq "1" "$(zsh_script docker 'echo $COMPOSE_DOCKER_CLI_BUILD')"
 }
 
-## ---------- scripts/github ---------- ##
-
-test_github_aliases_wrap_the_expected_commands() {
-  skip_unless_command zsh
-  assert_eq "ga='git add'" "$(zsh_script github 'alias ga')"
-  assert_eq "gcm='git commit -m'" "$(zsh_script github 'alias gcm')"
-  assert_eq "gs='git status'" "$(zsh_script github 'alias gs')"
-  assert_eq "ghpr='gh pr status'" "$(zsh_script github 'alias ghpr')"
-  # Branch cleanup needs branching logic, so it is a function rather than an
-  # alias; the tests below exercise what it does.
-  assert_eq "gbc: function" "$(zsh_script github 'whence -w gbc')"
-}
-
-test_every_github_alias_targets_git_or_gh() {
-  skip_unless_command zsh
-  local name definition
-  # Take the alias names from the file, then ask zsh what each one expanded to,
-  # so a typo in the file shows up as a mismatch here.
-  while read -r name; do
-    definition="$(zsh_script github "alias $name")"
-    case "$definition" in
-      "$name='git "* | "$name='gh "*) ;;
-      *) fail "github alias $name does not run git or gh: ${definition:-<undefined>}" ;;
-    esac
-  done < <(sed -n "s/^alias \([a-z]*\)=.*/\1/p" "$REPO_ROOT/scripts/github")
-}
-
-test_gbc_replaces_a_stale_gbc_alias() {
-  skip_unless_command zsh
-  # gbc used to be an alias, and zsh refuses to define a function over one, so
-  # re-sourcing this file in a shell left over from before the change has to
-  # clear the alias rather than die with a parse error.
-  assert_eq "gbc: function" "$(zsh -c "set -e
-    alias gbc='git branch -d \$(git branch --merged=master)'
-    source '$REPO_ROOT/scripts/github'
-    whence -w gbc" 2>&1)"
-}
-
-# Builds a repository whose default branch is main, with an origin to prune
-# against, and prints its path. The branches cover the ways branch cleanup can
-# go wrong:
-#
-#   main               the default branch, and the one to measure against
-#   master             a stale decoy, left behind the default branch on purpose
-#                      so that "merged into main" and "merged into master" are
-#                      different sets of branches
-#   feat-master-thing  merged, and only into master; its name contains the name
-#                      of a long-lived branch
-#   feat-main-thing    merged into main only; its name likewise
-#   other              merged into main only
-#   unmerged           has a commit of its own, so it is not merged anywhere
-gbc_repo() {
-  local origin="$TEST_TMP/origin" work="$TEST_TMP/work"
-
-  git init --quiet --bare "$origin"
-  git init --quiet "$work"
-  git -C "$work" symbolic-ref HEAD refs/heads/main
-  git_commit "$work" "first"
-  git -C "$work" remote add origin "$origin"
-  git -C "$work" push --quiet -u origin main
-  git -C "$work" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
-
-  git -C "$work" branch master
-  git -C "$work" branch feat-master-thing
-  git_commit "$work" "second"
-  git -C "$work" branch feat-main-thing
-  git -C "$work" branch other
-  git -C "$work" checkout --quiet -b unmerged
-  git_commit "$work" "third"
-  git -C "$work" checkout --quiet main
-
-  printf '%s\n' "$work"
-}
-
-git_commit() {
-  git -C "$1" -c user.name=Test -c user.email=test@example.com \
-    commit --quiet --allow-empty -m "$2"
-}
-
-# The branches left behind, as a single space-separated line.
-gbc_branches() {
-  git -C "$1" branch --format='%(refname:short)' | paste -sd' ' -
-}
-
-test_gbc_deletes_the_branches_merged_into_the_default_branch() {
-  skip_unless_command zsh
-  skip_unless_command git
-  local repo
-  repo="$(gbc_repo)"
-
-  zsh_script github "cd '$repo' && gbc" >/dev/null 2>&1 ||
-    fail "gbc failed: $(zsh_script github "cd '$repo' && gbc" 2>&1)"
-
-  # Everything merged into main goes, whatever its name; the default branch,
-  # the stale "master" and the unmerged branch stay.
-  assert_eq "main master unmerged" "$(gbc_branches "$repo")"
-}
-
-test_gbc_uses_the_default_branch_rather_than_master() {
-  skip_unless_command zsh
-  skip_unless_command git
-  local repo
-  repo="$(gbc_repo)"
-  # "other" is merged into main but not into master, so it is only ever cleaned
-  # up by working out what the default branch is instead of assuming "master".
-  assert_not_contains \
-    " $(git -C "$repo" branch --merged master --format='%(refname:short)' | paste -sd' ' -) " \
-    " other " "the fixture no longer distinguishes main from master"
-
-  zsh_script github "cd '$repo' && gbc" >/dev/null 2>&1 || fail "gbc failed"
-
-  assert_not_contains " $(gbc_branches "$repo") " " other "
-}
-
-test_gbc_deletes_the_branches_before_it_prunes() {
-  skip_unless_command zsh
-  skip_unless_command git
-  local repo real_git calls delete_line prune_line
-  real_git="$(command -v git)"
-  repo="$(gbc_repo)"
-  # A git that records its arguments and then does the real work, so the order
-  # of the calls can be asserted: backgrounding the delete with a single "&"
-  # raced it against the fetch instead of sequencing the two.
-  stub git "exec '$real_git' \"\$@\""
-
-  zsh_script github "cd '$repo' && gbc" >/dev/null 2>&1 || fail "gbc failed"
-
-  calls="$(stub_calls git)"
-  delete_line="$(printf '%s\n' "$calls" | grep -n '^branch -d ' | tail -1 | cut -d: -f1)" || true
-  prune_line="$(printf '%s\n' "$calls" | grep -n '^fetch --prune$' | head -1 | cut -d: -f1)" || true
-
-  [[ -n "$delete_line" ]] || fail "gbc deleted no branch; calls were: [$calls]"
-  [[ -n "$prune_line" ]] || fail "gbc never pruned; calls were: [$calls]"
-  [[ "$prune_line" -gt "$delete_line" ]] ||
-    fail "gbc pruned before it finished deleting; calls were: [$calls]"
-}
-
-test_gbc_falls_back_to_a_local_default_branch() {
-  skip_unless_command zsh
-  skip_unless_command git
-  local repo="$TEST_TMP/solo"
-  # No remote, so there is no origin/HEAD to read the default branch from and
-  # nothing to prune.
-  git init --quiet "$repo"
-  git -C "$repo" symbolic-ref HEAD refs/heads/main
-  git_commit "$repo" "first"
-  git -C "$repo" branch spike
-
-  zsh_script github "cd '$repo' && gbc" >/dev/null 2>&1 ||
-    fail "gbc failed without a remote"
-
-  assert_eq "main" "$(gbc_branches "$repo")"
-}
-
-test_gbc_gives_up_outside_a_repository() {
-  skip_unless_command zsh
-  skip_unless_command git
-  local plain="$TEST_TMP/plain" errors
-  mkdir -p "$plain"
-
-  assert_failure zsh_script github "cd '$plain' && gbc"
-  # And says why, rather than dying silently on the first failing git call.
-  errors="$(zsh_script github "cd '$plain' && gbc" 2>&1 >/dev/null)" || true
-  assert_contains "$errors" "gbc: cannot work out which branch to compare against"
-}
-
-## ---------- scripts/git ---------- ##
-
-test_parse_git_branch_reports_the_current_branch() {
-  skip_unless_command zsh
-  skip_unless_command git
-  local repo="$TEST_TMP/repo"
-  mkdir -p "$repo"
-  git -C "$repo" init --quiet
-  git -C "$repo" checkout --quiet -b feature/example
-  git -C "$repo" -c user.name=Test -c user.email=test@example.com \
-    commit --quiet --allow-empty -m "first"
-
-  assert_eq "[feature/example]" \
-    "$(zsh_script git "cd '$repo' && parse_git_branch")"
-}
-
-test_parse_git_branch_is_quiet_outside_a_repository() {
-  skip_unless_command zsh
-  skip_unless_command git
-  local plain="$TEST_TMP/plain"
-  mkdir -p "$plain"
-
-  assert_eq "" "$(zsh_script git "cd '$plain' && parse_git_branch")"
-}
-
-test_prompt_includes_the_branch() {
-  skip_unless_command zsh
-  assert_contains "$(zsh_script git 'echo $PROMPT')" 'parse_git_branch'
-  # Without PROMPT_SUBST the prompt would show the literal command instead.
-  assert_eq "on" "$(zsh_script git 'echo $options[promptsubst]')"
-}
-
 ## ---------- scripts/nvm ---------- ##
 
 test_nvm_is_loaded_when_installed() {
@@ -371,13 +173,36 @@ test_pyenv_init_skips_the_startup_rehash() {
 
 test_pyenv_shims_are_added_to_the_path() {
   skip_unless_command zsh
+  mkdir -p "$HOME/.pyenv/bin"
+  stub pyenv 'exit 0'
+
   assert_contains "$(zsh_script pyenv 'echo $PATH')" "$HOME/.pyenv/bin"
+}
+
+test_pyenv_shims_are_not_added_twice() {
+  skip_unless_command zsh
+  mkdir -p "$HOME/.pyenv/bin"
+  stub pyenv 'exit 0'
+  local path
+  # As with rbenv: every `sz` used to push another copy onto $PATH.
+  path="$(zsh_script pyenv "source '$REPO_ROOT/scripts/pyenv'; echo \$PATH")"
+
+  assert_eq "1" "$(printf '%s\n' "${path//:/$'\n'}" | grep -c "^$HOME/.pyenv/bin$")"
+}
+
+test_pyenv_shims_are_left_off_the_path_when_missing() {
+  skip_unless_command zsh
+  # A Homebrew pyenv has no ~/.pyenv/bin; adding it anyway put a directory
+  # that does not exist on every $PATH.
+  stub pyenv 'exit 0'
+
+  assert_not_contains "$(zsh_script pyenv 'echo $PATH')" "$HOME/.pyenv/bin"
 }
 
 test_pyenv_is_skipped_when_not_installed() {
   skip_unless_command zsh
   local errors
-  # A PATH with no pyenv on it, so the `which pyenv` guard has to hold.
+  # A PATH with no pyenv on it, so the `command -v pyenv` guard has to hold.
   errors="$(PATH="/usr/bin:/bin" zsh_script pyenv 2>&1 >/dev/null)" ||
     fail "scripts/pyenv failed without pyenv installed"
   assert_eq "" "$errors" "scripts/pyenv complained about the missing pyenv"
@@ -385,20 +210,40 @@ test_pyenv_is_skipped_when_not_installed() {
 
 ## ---------- scripts/homebrew ---------- ##
 
-test_homebrew_curl_is_prepended_when_present() {
+test_homebrew_curl_is_left_off_the_path_when_missing() {
   skip_unless_command zsh
-  local path
-  path="$(zsh_script homebrew 'echo $PATH')"
+  local prefix="$TEST_TMP/brew-without-curl"
+  mkdir -p "$prefix"
 
-  if [[ -d /opt/homebrew/opt/curl/bin ]]; then
-    assert_eq "/opt/homebrew/opt/curl/bin" "${path%%:*}"
-  elif [[ -d /usr/local/opt/curl/bin ]]; then
-    assert_eq "/usr/local/opt/curl/bin" "${path%%:*}"
-  else
-    # Nothing to prepend: the script must leave $PATH alone rather than adding
-    # a directory that does not exist.
-    assert_not_contains "$path" "opt/curl/bin"
-  fi
+  # Nothing to prepend: $PATH must not gain a directory that does not exist.
+  assert_not_contains \
+    "$(HOMEBREW_PREFIX="$prefix" zsh_script homebrew 'echo $PATH')" "$prefix"
+}
+
+test_homebrew_curl_comes_from_homebrew_prefix_first() {
+  skip_unless_command zsh
+  local prefix="$TEST_TMP/brew" path
+  mkdir -p "$prefix/opt/curl/bin"
+  path="$(HOMEBREW_PREFIX="$prefix" zsh_script homebrew 'echo $PATH')"
+
+  assert_eq "$prefix/opt/curl/bin" "${path%%:*}"
+}
+
+test_homebrew_curl_is_not_added_twice() {
+  skip_unless_command zsh
+  local prefix="$TEST_TMP/brew" path
+  mkdir -p "$prefix/opt/curl/bin"
+  # Re-sourcing the profile (`sz`) used to push another copy onto $PATH.
+  path="$(HOMEBREW_PREFIX="$prefix" zsh_script homebrew \
+    "source '$REPO_ROOT/scripts/homebrew'; echo \$PATH")"
+
+  assert_eq "1" "$(printf '%s\n' "${path//:/$'\n'}" | grep -cFx "$prefix/opt/curl/bin")"
+}
+
+test_homebrew_leaves_no_loop_variable_behind() {
+  skip_unless_command zsh
+  assert_eq "unset" \
+    "$(zsh_script homebrew '[[ -z ${curl_bin+set} ]] && echo unset')"
 }
 
 ## ---------- scripts/browserstack ---------- ##
@@ -567,11 +412,20 @@ test_oh_my_zsh_honours_an_existing_zsh_directory() {
     "$(ZSH="$TEST_TMP/elsewhere" zsh_script oh-my-zsh 'echo $OMZ_LOADED')"
 }
 
-test_oh_my_zsh_loads_no_theme() {
+test_oh_my_zsh_draws_the_prompt_with_its_default_theme() {
   skip_unless_command zsh
   fake_oh_my_zsh
-  # scripts/git sets $PROMPT, and is sourced after this file.
-  assert_eq "" "$(zsh_script oh-my-zsh 'echo $ZSH_THEME')"
+  # Nothing in scripts/ sets $PROMPT, so the theme is what draws it.
+  assert_eq "robbyrussell" "$(zsh_script oh-my-zsh 'echo $ZSH_THEME')"
+}
+
+test_no_script_overrides_the_oh_my_zsh_prompt() {
+  # A $PROMPT set in scripts/ is sourced after oh-my-zsh and would silently
+  # replace the theme's.
+  local hits
+  hits="$(grep -lE '^[[:space:]]*(export[[:space:]]+)?(PROMPT|PS1|RPROMPT)=' \
+    "$REPO_ROOT"/scripts/* || true)"
+  assert_eq "" "$hits" "scripts that set the prompt"
 }
 
 test_oh_my_zsh_enables_the_expected_plugins() {
@@ -580,9 +434,9 @@ test_oh_my_zsh_enables_the_expected_plugins() {
   local plugins
   plugins="$(zsh_script oh-my-zsh 'echo $plugins')"
 
-  assert_eq "brew docker gh" "$plugins"
-  # scripts/github owns the git aliases.
-  assert_not_contains "$plugins" "git "
+  # git supplies the git aliases (gst, gaa, gl, gp, gbda, ...); nothing in
+  # scripts/ defines its own.
+  assert_eq "git brew docker gh" "$plugins"
 }
 
 test_oh_my_zsh_does_not_prompt_to_update() {
