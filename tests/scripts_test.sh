@@ -222,34 +222,56 @@ test_gbc_gives_up_outside_a_repository() {
 
 ## ---------- scripts/git ---------- ##
 
-test_parse_git_branch_reports_the_current_branch() {
-  skip_unless_command zsh
-  skip_unless_command git
-  local repo="$TEST_TMP/repo"
-  mkdir -p "$repo"
-  git -C "$repo" init --quiet
-  git -C "$repo" checkout --quiet -b feature/example
-  git -C "$repo" -c user.name=Test -c user.email=test@example.com \
-    commit --quiet --allow-empty -m "first"
-
-  assert_eq "[feature/example]" \
-    "$(zsh_script git "cd '$repo' && parse_git_branch")"
+# Renders $PROMPT the way the line editor would, minus the colour escapes.
+render_prompt() {
+  printf '%s' "$1" | sed $'s/\x1b\\[[0-9;]*m//g'
 }
 
-test_parse_git_branch_is_quiet_outside_a_repository() {
+test_prompt_shows_the_branch_from_oh_my_zsh() {
   skip_unless_command zsh
-  skip_unless_command git
-  local plain="$TEST_TMP/plain"
-  mkdir -p "$plain"
+  local rendered
+  # A stand-in for oh-my-zsh's git_prompt_info, which wraps the branch in the
+  # prefix and suffix scripts/git sets. scripts/git must not replace it.
+  # shellcheck disable=SC2016  # expanded by zsh, not here
+  rendered="$(zsh -c '
+    set -e
+    git_prompt_info() {
+      print -rn -- "${ZSH_THEME_GIT_PROMPT_PREFIX}feature/example${ZSH_THEME_GIT_PROMPT_SUFFIX}"
+    }
+    source "$1"
+    cd /
+    print -P -- "$PROMPT"' zsh "$REPO_ROOT/scripts/git")"
 
-  assert_eq "" "$(zsh_script git "cd '$plain' && parse_git_branch")"
+  assert_eq "$(id -un) / [feature/example] \$ " "$(render_prompt "$rendered")"
 }
 
-test_prompt_includes_the_branch() {
+test_prompt_uses_git_prompt_info_verbatim() {
   skip_unless_command zsh
-  assert_contains "$(zsh_script git 'echo $PROMPT')" 'parse_git_branch'
+  # oh-my-zsh only starts its async branch lookup when the prompt contains
+  # exactly `$(git_prompt_info)`; a redirect or argument added inside the
+  # parentheses would leave the branch blank forever.
+  # shellcheck disable=SC2016  # the literal text is the point
+  assert_contains "$(zsh_script git 'echo $PROMPT')" '$(git_prompt_info)'
   # Without PROMPT_SUBST the prompt would show the literal command instead.
   assert_eq "on" "$(zsh_script git 'echo $options[promptsubst]')"
+}
+
+test_prompt_drops_the_branch_quietly_without_oh_my_zsh() {
+  skip_unless_command zsh
+  local rendered errors
+  errors="$(zsh_script git 'cd /; print -P -- "$PROMPT"' 2>&1 >"$TEST_TMP/out")" ||
+    fail "the prompt failed to render without oh-my-zsh"
+  rendered="$(cat "$TEST_TMP/out")"
+
+  assert_eq "" "$errors" "the prompt complained without oh-my-zsh"
+  assert_eq "$(id -un) / \$ " "$(render_prompt "$rendered")"
+}
+
+test_prompt_does_not_mark_a_dirty_branch() {
+  skip_unless_command zsh
+  # oh-my-zsh's default is a trailing `*`; this prompt never had one.
+  assert_eq "|" \
+    "$(zsh_script git 'echo "$ZSH_THEME_GIT_PROMPT_DIRTY|$ZSH_THEME_GIT_PROMPT_CLEAN"')"
 }
 
 ## ---------- scripts/nvm ---------- ##

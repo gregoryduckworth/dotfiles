@@ -96,7 +96,7 @@ order, so the filenames decide the order.
 | `completion` | `compinit`, case-insensitive matching, arrow-key menu selection |
 | `docker` | Docker aliases and BuildKit |
 | `editor` | `$EDITOR` and `$VISUAL` |
-| `git` | The prompt, including the current branch |
+| `git` | The prompt; the branch comes from oh-my-zsh's `git_prompt_info` |
 | `github` | `git` and `gh` aliases |
 | `history` | A 50k-line shared history that dedupes |
 | `homebrew` | Homebrew's curl on `$PATH` |
@@ -126,13 +126,18 @@ because oh-my-zsh's git plugin does.
 It is configured, not adopted wholesale:
 
 - **No theme.** `scripts/git` owns `$PROMPT`, so a theme would only be read
-  and then overwritten.
+  and then overwritten. The branch in it still comes from oh-my-zsh: its
+  `git_prompt_info` (from `lib/`, so no plugin needed) looks the branch up
+  asynchronously rather than forking `git` on every prompt. oh-my-zsh only
+  starts that lookup when `$PROMPT` contains `$(git_prompt_info)` written
+  exactly so. Without oh-my-zsh the prompt simply has no branch.
 - **`plugins=(brew docker gh)`** - completion and aliases for tools this repo
   already installs. `brew` also runs `brew shellenv` when Homebrew is not on
   `$PATH` yet, which on Apple Silicon is what puts it there: nothing else in
-  this repo, and no `~/.zprofile`, does. `git` is deliberately absent: `scripts/github` owns the git
-  aliases, and the plugin's own hundred-odd would be shadowed where the two
-  overlap and left standing where they do not.
+  this repo, and no `~/.zprofile`, does. The `git` plugin is deliberately
+  absent: `scripts/github` owns the git aliases, and the plugin's own
+  hundred-odd would be shadowed where the two overlap and left standing where
+  they do not.
 - **`zstyle ':omz:update' mode reminder`** - the default stops and asks, which
   puts a prompt in front of the first command in a new terminal. Run
   `omz update` when it suits.

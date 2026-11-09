@@ -1,9 +1,27 @@
-parse_git_branch() {
-    git branch 2> /dev/null | sed -n -e 's/^\* \(.*\)/[\1]/p'
-}
-COLOR_DEF='%f'
-COLOR_DIR='%F{197}'
-COLOR_GIT='%F{39}'
-NEWLINE=$'\n'
+# The prompt: user, directory and the current branch in brackets.
+#
+#   greg ~/Github/dotfiles [main] $
+#
+# The branch comes from oh-my-zsh's git_prompt_info (lib/git.zsh, loaded
+# whatever plugins are enabled), which looks it up asynchronously instead of
+# forking git on every prompt. oh-my-zsh only starts that lookup when $PROMPT
+# contains `$(git_prompt_info)` spelled exactly so, so keep it verbatim.
+
+# The space before the bracket lives here, so a prompt outside a repository
+# does not end up with two.
+ZSH_THEME_GIT_PROMPT_PREFIX=' ['
+ZSH_THEME_GIT_PROMPT_SUFFIX=']'
+# oh-my-zsh marks a dirty branch with a `*` by default; this prompt never has.
+ZSH_THEME_GIT_PROMPT_DIRTY=''
+ZSH_THEME_GIT_PROMPT_CLEAN=''
+
+# Without oh-my-zsh there is no git_prompt_info, and every prompt would print
+# "command not found". Fall back to a prompt without the branch.
+if (( ! $+functions[git_prompt_info] )); then
+  git_prompt_info() {
+    return 0
+  }
+fi
+
 setopt PROMPT_SUBST
-export PROMPT='%n ${COLOR_DIR}%~ ${COLOR_GIT}$(parse_git_branch)${COLOR_DEF} $ '
+PROMPT='%n %F{197}%~%F{39}$(git_prompt_info)%f $ '
