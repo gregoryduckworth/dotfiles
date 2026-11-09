@@ -113,6 +113,120 @@ test_dry_run_reports_the_oh_my_zsh_clone_without_running_it() {
   assert_missing "$HOME/.oh-my-zsh"
 }
 
+## ---------- claude_install ---------- ##
+
+# A $PATH without the machine's own claude on it, so the "already installed"
+# check sees only what a test puts there.
+claude_free_path() {
+  echo "$STUB_BIN:/usr/bin:/bin"
+}
+
+test_claude_install_runs_the_native_installer() {
+  # The installer the stub curl hands to bash: drops a claude where the real
+  # one goes.
+  # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
+  stub curl 'echo "mkdir -p \"\$HOME/.local/bin\" && touch \"\$HOME/.local/bin/claude\""'
+  PATH="$(claude_free_path)" CI="" claude_install >/dev/null || fail "claude_install failed"
+
+  assert_stub_called curl "-fsSL $CLAUDE_INSTALLER"
+  assert_file "$HOME/.local/bin/claude"
+}
+
+test_claude_install_leaves_an_existing_claude_alone() {
+  stub curl 'exit 0'
+  mkdir -p "$HOME/.local/bin"
+  printf '#!/bin/sh\n' >"$HOME/.local/bin/claude"
+  chmod +x "$HOME/.local/bin/claude"
+  PATH="$(claude_free_path)" CI="" claude_install >/dev/null
+
+  assert_eq "" "$(stub_calls curl)" "curl ran with Claude Code installed"
+}
+
+test_claude_install_warns_and_carries_on_after_a_failed_download() {
+  # A network hiccup must not abort the rest of the bootstrap.
+  stub curl 'exit 22'
+  local output status=0
+  # Set inside the substitution on purpose: only claude_install should see them.
+  # shellcheck disable=SC2030
+  output="$(
+    PATH="$(claude_free_path)"
+    CI=""
+    claude_install 2>&1
+  )" || status=$?
+
+  assert_eq "0" "$status" "a failed download aborted the bootstrap"
+  assert_contains "$output" "Warning: Claude Code installation failed"
+  assert_contains "$output" "curl -fsSL $CLAUDE_INSTALLER | bash"
+}
+
+test_claude_install_does_not_run_in_ci() {
+  stub curl 'exit 0'
+  PATH="$(claude_free_path)" CI=1 claude_install >/dev/null
+
+  assert_eq "" "$(stub_calls curl)" "CI installed Claude Code"
+}
+
+test_dry_run_reports_the_claude_install_without_running_it() {
+  stub curl 'exit 0'
+  DRY_RUN=1
+  local output
+  output="$(PATH="$(claude_free_path)" CI="" claude_install)"
+
+  assert_contains "$output" "[dry-run] curl -fsSL $CLAUDE_INSTALLER | bash"
+  assert_eq "" "$(stub_calls curl)" "--dry-run ran curl"
+}
+
+## ---------- git_config_install ---------- ##
+
+test_git_config_install_includes_the_checkouts_gitconfig() {
+  git_config_install >/dev/null
+
+  assert_eq "$REPO_ROOT/gitconfig" "$(git config --global --get-all include.path)"
+  # --includes, because a single scope is read without following includes.
+  assert_eq "true" "$(git config --global --includes --get pull.rebase)"
+  assert_eq "main" "$(git config --global --includes --get init.defaultBranch)"
+}
+
+test_git_config_install_includes_it_only_once() {
+  git_config_install >/dev/null
+  git_config_install >/dev/null
+
+  assert_eq "1" "$(git config --global --get-all include.path | grep -cFx "$REPO_ROOT/gitconfig")"
+}
+
+test_git_config_install_keeps_the_existing_gitconfig() {
+  # Identity and credential helpers live in ~/.gitconfig and must survive.
+  git config --global user.name "Someone"
+  git config --global credential.helper osxkeychain
+  git_config_install >/dev/null
+
+  assert_eq "Someone" "$(git config --global --get user.name)"
+  assert_eq "osxkeychain" "$(git config --global --get credential.helper)"
+}
+
+test_dry_run_reports_the_git_config_include_without_writing_it() {
+  DRY_RUN=1
+  local output
+  output="$(git_config_install)"
+
+  assert_contains "$output" "[dry-run] git config --global --add include.path $REPO_ROOT/gitconfig"
+  assert_missing "$HOME/.gitconfig"
+}
+
+test_the_gitconfig_is_valid_and_sets_the_shared_settings() {
+  local settings
+  settings="$(git config --file "$REPO_ROOT/gitconfig" --list)" ||
+    fail "gitconfig does not parse"
+
+  assert_contains "$settings" "init.defaultbranch=main"
+  assert_contains "$settings" "pull.rebase=true"
+  assert_contains "$settings" "rebase.autostash=true"
+  assert_contains "$settings" "push.autosetupremote=true"
+  assert_contains "$settings" "fetch.prune=true"
+  # Identity is per machine, so it must never be tracked here.
+  assert_not_contains "$settings" "user."
+}
+
 ## ---------- set_login_shell ---------- ##
 
 # stub_login_shell <shell>: an account database that says the login shell is

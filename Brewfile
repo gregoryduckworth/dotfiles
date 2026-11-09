@@ -15,6 +15,15 @@ brew "gh"
 brew "zsh-autosuggestions"
 brew "zsh-syntax-highlighting"
 
+# Docker, with colima as the runtime instead of Docker Desktop. compose and
+# buildx are CLI plugins in their own formulae, and Homebrew's docker finds them
+# without any ~/.docker/config.json. colima runs as a login service, so
+# `docker` works in a new terminal without a `colima start` first.
+brew "docker"
+brew "docker-buildx"
+brew "docker-compose"
+brew "colima", restart_service: :changed
+
 cask "google-chrome"
 cask "iterm2"
 cask "slack"

@@ -221,6 +221,31 @@ test_oh_my_zsh_survives_a_framework_that_exits_non_zero() {
   zsh_script oh-my-zsh || fail "scripts/oh-my-zsh propagated oh-my-zsh's status"
 }
 
+## ---------- scripts/path ---------- ##
+
+test_path_adds_local_bin_when_it_exists() {
+  skip_unless_command zsh
+  mkdir -p "$HOME/.local/bin"
+  local path
+  path="$(PATH=/usr/bin:/bin zsh_script path 'echo $PATH')"
+
+  assert_eq "$HOME/.local/bin" "${path%%:*}"
+}
+
+test_path_adds_local_bin_only_once() {
+  skip_unless_command zsh
+  mkdir -p "$HOME/.local/bin"
+  local path
+  path="$(zsh_script path "source '$REPO_ROOT/scripts/path'; echo \$PATH")"
+
+  assert_eq "1" "$(printf '%s\n' "${path//:/$'\n'}" | grep -cFx "$HOME/.local/bin")"
+}
+
+test_path_leaves_local_bin_off_when_missing() {
+  skip_unless_command zsh
+  assert_not_contains "$(zsh_script path 'echo $PATH')" "$HOME/.local/bin"
+}
+
 ## ---------- scripts/editor ---------- ##
 
 # A $PATH holding nothing but zsh, so the editor probing below sees exactly the

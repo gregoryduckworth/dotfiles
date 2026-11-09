@@ -21,6 +21,8 @@ test_profile_loads_every_script() {
   assert_contains "$(zsh_profile 'echo $CHROME')" "Google" "scripts/browserstack"
   assert_eq "0" "$(zsh_profile '[[ -n $EDITOR ]]; echo $?')" "scripts/editor"
   assert_contains "$(zsh_profile 'echo $ZSH')" ".oh-my-zsh" "scripts/oh-my-zsh"
+  mkdir -p "$HOME/.local/bin"
+  assert_contains "$(zsh_profile 'echo $PATH')" "$HOME/.local/bin" "scripts/path"
 }
 
 # The order ~/scripts is sourced in, one filename per line. .zshrc uses a plain

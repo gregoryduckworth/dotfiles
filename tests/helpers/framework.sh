@@ -129,6 +129,9 @@ _run_one() (
   # tests at the real ~/.oh-my-zsh, ~/.nvm and cache rather than the sandbox.
   unset ZSH ZSH_CUSTOM ZSH_CACHE_DIR ZSH_COMPDUMP NVM_DIR XDG_CACHE_HOME \
     EDITOR VISUAL
+  # Either would point `git config --global` at the real machine's config
+  # instead of the sandbox $HOME/.gitconfig.
+  unset GIT_CONFIG_GLOBAL XDG_CONFIG_HOME
 
   cd "$REPO_ROOT"
   "$1"
