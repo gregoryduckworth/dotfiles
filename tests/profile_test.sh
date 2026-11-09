@@ -18,7 +18,6 @@ test_profile_loads_every_script() {
   install_profile_into_home
 
   # One representative from each file in scripts/.
-  assert_eq "1" "$(zsh_profile 'echo $DOCKER_BUILDKIT')" "scripts/docker"
   assert_contains "$(zsh_profile 'echo $CHROME')" "Google" "scripts/browserstack"
   assert_contains "$(zsh_profile 'echo $NVM_DIR')" ".nvm" "scripts/nvm"
   assert_contains "$(zsh_profile 'echo $HISTFILE')" ".zsh_history" "scripts/history"
@@ -113,7 +112,7 @@ fake_oh_my_zsh() {
   mkdir -p "$HOME/.oh-my-zsh"
   cat >"$HOME/.oh-my-zsh/oh-my-zsh.sh" <<'EOF'
 print -r -- loaded >>"$HOME/omz-loads"
-alias dr='oh-my-zsh docker run'
+alias demo='oh-my-zsh'
 alias omz-only='oh-my-zsh'
 EOF
 }
@@ -131,8 +130,11 @@ test_scripts_override_oh_my_zsh() {
   install_profile_into_home
   fake_oh_my_zsh
 
-  # Why .zshrc sources oh-my-zsh first: this repo's aliases have to win.
-  assert_eq "dr='docker run --rm -it \$(docker build -q .)'" "$(zsh_profile 'alias dr')"
+  # Why .zshrc sources oh-my-zsh first: anything in ~/scripts has to win over
+  # an oh-my-zsh alias of the same name.
+  echo "alias demo='mine'" >"$HOME/scripts/demo"
+
+  assert_eq "demo=mine" "$(zsh_profile 'alias demo')"
 }
 
 test_profile_loads_oh_my_zsh_exactly_once() {
