@@ -75,6 +75,11 @@ test_the_base_brewfile_carries_the_general_packages() {
   # scripts/zsh-plugins sources these on every shell start.
   assert_contains "$base" 'brew "zsh-autosuggestions"'
   assert_contains "$base" 'brew "zsh-syntax-highlighting"'
+  assert_contains "$base" 'brew "docker"'
+  assert_contains "$base" 'brew "docker-buildx"'
+  assert_contains "$base" 'brew "docker-compose"'
+  # The runtime, started as a service so docker works in any new terminal.
+  assert_contains "$base" 'brew "colima", restart_service: :changed'
   assert_contains "$base" 'cask "google-chrome"'
   assert_contains "$base" 'cask "iterm2"'
   assert_contains "$base" 'cask "slack"'
