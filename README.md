@@ -94,7 +94,6 @@ order, so the filenames decide the order.
 | --- | --- |
 | `browserstack` | BrowserStack credentials and the path to Chrome |
 | `completion` | `compinit`, case-insensitive matching, arrow-key menu selection |
-| `docker` | Docker aliases and BuildKit |
 | `editor` | `$EDITOR` and `$VISUAL` |
 | `history` | A 50k-line shared history that dedupes |
 | `homebrew` | Homebrew's curl on `$PATH` |
@@ -117,9 +116,9 @@ general packages, and a shell without them starts normally.
 
 ### Oh My Zsh
 Sourced before everything else in `scripts/`, because it brings aliases,
-options and completions of its own and the files here are meant to win over
-them: `dr` builds and runs the current directory because `scripts/docker`
-says so, not the bare `docker container run` of oh-my-zsh's docker plugin.
+options and completions of its own, and anything here - or in
+`~/.zshrc.local` - is meant to win over them. Nothing in `scripts/` redefines
+an oh-my-zsh alias today: the git and docker aliases are the plugins' own.
 
 It is configured, not adopted wholesale:
 
@@ -128,14 +127,15 @@ It is configured, not adopted wholesale:
   `$PROMPT`, and `tests/scripts_test.sh` keeps it that way, since a file
   sourced after oh-my-zsh would silently replace the theme's. Without
   oh-my-zsh you get zsh's plain default prompt.
-- **`plugins=(git brew docker gh)`** - completion and aliases for tools this
-  repo already installs. `git` provides the git aliases - the standard
+- **`plugins=(git brew docker gh)`** - completion and the standard aliases
+  for the everyday tools. `git` provides the git aliases - the standard
   oh-my-zsh set (`gst` status, `gaa` add all, `gl` pull, `gp` push, `gbda`
   delete merged branches, ...); see `alias | grep git` or the
   [plugin's README](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/git).
   `brew` also runs `brew shellenv` when Homebrew is not on `$PATH` yet, which
   on Apple Silicon is what puts it there: nothing else in this repo, and no
-  `~/.zprofile`, does.
+  `~/.zprofile`, does. `docker` provides the standard docker aliases (`dr`
+  run, `dps` ps, `dsprune` system prune, ...).
 - **`zstyle ':omz:update' mode reminder`** - the default stops and asks, which
   puts a prompt in front of the first command in a new terminal. Run
   `omz update` when it suits.

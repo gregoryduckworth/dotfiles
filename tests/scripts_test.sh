@@ -35,25 +35,6 @@ test_every_script_exits_cleanly_on_its_own() {
   done
 }
 
-## ---------- scripts/docker ---------- ##
-
-test_docker_aliases_are_well_formed() {
-  skip_unless_command zsh
-  # A stray character on the end of this alias used to make it run
-  # `docker build -q .` and then append a "d" to the image id.
-  assert_eq "dr='docker run --rm -it \$(docker build -q .)'" \
-    "$(zsh_script docker 'alias dr')"
-  assert_eq "drs='docker stop \$(docker ps -a -q)'" "$(zsh_script docker 'alias drs')"
-  assert_eq "drd='docker rm \$(docker ps -a -q)'" "$(zsh_script docker 'alias drd')"
-  assert_eq "drp='docker system prune'" "$(zsh_script docker 'alias drp')"
-}
-
-test_docker_enables_buildkit() {
-  skip_unless_command zsh
-  assert_eq "1" "$(zsh_script docker 'echo $DOCKER_BUILDKIT')"
-  assert_eq "1" "$(zsh_script docker 'echo $COMPOSE_DOCKER_CLI_BUILD')"
-}
-
 ## ---------- scripts/nvm ---------- ##
 
 test_nvm_is_loaded_when_installed() {
