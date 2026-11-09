@@ -150,6 +150,22 @@ test_oh_my_zsh_lazy_loads_nvm() {
     "$(zsh_script oh-my-zsh 'zstyle -t ":omz:plugins:nvm" lazy && echo yes')"
 }
 
+test_oh_my_zsh_silences_the_pyenv_shims_warning() {
+  skip_unless_command zsh
+  mkdir -p "$HOME/.oh-my-zsh"
+  # A pyenv on $PATH with its shims not, as with the Homebrew formula and no
+  # ~/.zprofile, and the check the omz pyenv plugin makes before warning.
+  stub pyenv 'exit 0'
+  # shellcheck disable=SC2016  # expanded by zsh, not here
+  echo '(( $+commands[pyenv] )) && [[ "$ZSH_PYENV_QUIET" != true ]] &&
+    echo "Found pyenv, but it is badly configured" >&2
+    true' >"$HOME/.oh-my-zsh/oh-my-zsh.sh"
+  local errors
+  errors="$(zsh_script oh-my-zsh 2>&1 >/dev/null)" || fail "scripts/oh-my-zsh failed"
+
+  assert_eq "" "$errors" "a new shell warned about pyenv"
+}
+
 test_oh_my_zsh_does_not_prompt_to_update() {
   skip_unless_command zsh
   fake_oh_my_zsh

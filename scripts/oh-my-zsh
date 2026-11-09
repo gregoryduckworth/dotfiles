@@ -16,6 +16,11 @@ if [[ -r "$ZSH/oh-my-zsh.sh" ]]; then
   # tools (tsc, eslint, ...) and git hooks that call them are not on $PATH;
   # run `node -v` or `nvm use` first. Has to be set before the plugin loads.
   zstyle ':omz:plugins:nvm' lazy yes
+  # The pyenv plugin warns, at length and on every new terminal, unless pyenv's
+  # shims are on $PATH before it runs - which a Homebrew pyenv with no
+  # ~/.zprofile never has. It then runs `pyenv init --path` itself, so the
+  # setup is right and only the warning is wrong.
+  ZSH_PYENV_QUIET=true
   # The default mode asks before updating, on the first prompt of a new shell.
   zstyle ':omz:update' mode reminder
 
