@@ -390,19 +390,34 @@ nvm_install() {
     return 0
   fi
 
-  # The Homebrew formula keeps its node versions here but nvm.sh elsewhere.
-  # Cloning into the directory would fail and moving it would lose those
-  # versions, so that is left to the user.
-  if [[ -e "$NVM_DIR" ]]; then
-    echo "Error: $NVM_DIR exists but holds no nvm.sh (left by a Homebrew nvm?);"
-    echo "move it aside and re-run to install nvm there"
+  if [[ ! -e "$NVM_DIR" ]]; then
+    echo "Installing nvm..."
+    if ! run git clone --quiet "$NVM_REPO" "$NVM_DIR"; then
+      echo "Error: nvm installation failed"
+      return 1
+    fi
+  elif [[ -e "$NVM_DIR/.git" ]]; then
+    # A checkout with no nvm.sh in it is broken in some way this script cannot
+    # know how to fix safely.
+    echo "Error: $NVM_DIR is a git checkout with no nvm.sh in it;"
+    echo "fix or move it aside, then re-run"
     return 1
-  fi
-
-  echo "Installing nvm..."
-  if ! run git clone --quiet "$NVM_REPO" "$NVM_DIR"; then
-    echo "Error: nvm installation failed"
-    return 1
+  else
+    # What the Homebrew formula leaves behind: the node versions it installed,
+    # but nvm.sh elsewhere. Install nvm around them, the way nvm's own
+    # installer does for an existing directory, so they keep working.
+    echo "Installing nvm into the existing $NVM_DIR, keeping its node versions..."
+    if ! {
+      run git -C "$NVM_DIR" init --quiet &&
+        run git -C "$NVM_DIR" remote add origin "$NVM_REPO" &&
+        run git -C "$NVM_DIR" fetch --quiet --tags origin
+    }; then
+      # Take the half-made checkout back out, so a re-run tries again rather
+      # than refusing a directory that is now a git checkout.
+      run rm -rf "${NVM_DIR:?}/.git"
+      echo "Error: could not fetch nvm into $NVM_DIR"
+      return 1
+    fi
   fi
 
   # The default branch is nvm's development line; check out the newest
@@ -414,7 +429,10 @@ nvm_install() {
     echo "Error: could not find an nvm release to check out"
     return 1
   fi
-  run git -C "$NVM_DIR" checkout --quiet "$tag"
+  if ! run git -C "$NVM_DIR" checkout --quiet "$tag"; then
+    echo "Error: could not check out nvm $tag"
+    return 1
+  fi
 }
 
 node_install() {

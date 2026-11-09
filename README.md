@@ -64,8 +64,18 @@ The Node step clones [nvm](https://github.com/nvm-sh/nvm) into `~/.nvm` at its
 latest release - nvm's own manual install, since nvm does not support the
 Homebrew formula - and runs `nvm install --lts`, so there is no Homebrew
 `node` racing nvm's shims for `$PATH`. A `~/.nvm` left behind by a Homebrew
-nvm (node versions, but no `nvm.sh`) stops the step with a message rather
-than being cloned over.
+nvm (node versions, but no `nvm.sh`) gets nvm fetched into it in place, the
+way nvm's own installer does, so the versions already installed keep working.
+
+### Upgrading an existing machine
+
+`git pull` in the checkout is normally the whole update, but a machine
+bootstrapped when nvm came from Homebrew needs one more step: re-run
+`./install.sh` and answer yes to Node. Until then `scripts/nvm` is gone and
+oh-my-zsh's nvm plugin finds no `nvm.sh` in `~/.nvm`, so new terminals have no
+`node`, `npm` or `npx`. The re-run installs nvm into the existing `~/.nvm`
+without touching the node versions in it; `brew uninstall nvm` afterwards is
+optional.
 
 ## Packages
 
