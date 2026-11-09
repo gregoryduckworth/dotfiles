@@ -204,6 +204,22 @@ test_git_config_install_keeps_the_existing_gitconfig() {
   assert_eq "osxkeychain" "$(git config --global --get credential.helper)"
 }
 
+test_git_config_install_reports_the_settings_it_overrides() {
+  git config --global pull.rebase false
+  # Already the shared value, so nothing to report for it.
+  git config --global init.defaultBranch main
+  local output
+  output="$(git_config_install)"
+
+  assert_contains "$output" "Note: ~/.gitconfig sets pull.rebase=false; the shared gitconfig's pull.rebase=true will win"
+  assert_not_contains "$output" "init.defaultbranch"
+}
+
+test_git_config_install_is_quiet_about_settings_it_does_not_change() {
+  git config --global user.name "Someone"
+  assert_not_contains "$(git_config_install)" "Note:"
+}
+
 test_dry_run_reports_the_git_config_include_without_writing_it() {
   DRY_RUN=1
   local output
@@ -481,6 +497,20 @@ test_source_profile_links_profile_and_scripts() {
   diff -r "$REPO_ROOT/scripts" "$HOME/scripts" || fail "installed scripts differ"
 }
 
+test_source_profile_links_the_login_profile() {
+  source_profile zshrc >/dev/null
+
+  assert_symlink "$HOME/.zprofile" "$REPO_ROOT/.zprofile"
+}
+
+test_source_profile_backs_up_a_real_zprofile() {
+  echo "# mine" >"$HOME/.zprofile"
+  source_profile zshrc >/dev/null
+
+  assert_symlink "$HOME/.zprofile" "$REPO_ROOT/.zprofile"
+  assert_eq "# mine" "$(cat "$HOME"/.zprofile.backup-*)"
+}
+
 test_source_profile_is_idempotent() {
   source_profile zshrc >/dev/null
   source_profile zshrc >/dev/null
@@ -688,6 +718,20 @@ test_node_install_retries_cleanly_after_a_failed_in_place_fetch() {
   assert_missing "$HOME/.nvm/.git"
 }
 
+test_node_install_retries_cleanly_after_a_failed_in_place_checkout() {
+  homebrew_nvm_dir
+  # The fetch works, but the checkout does not - say, a file already in
+  # ~/.nvm clashes with one of nvm's.
+  stub_nvm_git checkout
+  local output status=0
+  output="$(node_install 2>&1)" || status=$?
+
+  assert_eq "1" "$status" "node_install did not fail"
+  assert_contains "$output" "could not check out nvm"
+  assert_file "$HOME/.nvm/versions/node/v20.0.0/bin/node"
+  assert_missing "$HOME/.nvm/.git"
+}
+
 test_node_install_refuses_a_checkout_without_nvm_sh() {
   mkdir -p "$HOME/.nvm/.git"
   stub_nvm_git
@@ -746,6 +790,8 @@ test_configure_macos_writes_expected_defaults() {
   CI="" configure_macos >/dev/null
 
   assert_stub_called defaults "write NSGlobalDomain KeyRepeat -int 2"
+  assert_stub_called defaults "write NSGlobalDomain InitialKeyRepeat -int 15"
+  assert_stub_called defaults "write NSGlobalDomain ApplePressAndHoldEnabled -bool false"
   assert_stub_called defaults "write com.apple.screensaver askForPassword -int 1"
   assert_stub_called defaults "write NSGlobalDomain AppleShowAllExtensions -bool true"
   assert_stub_called defaults "write com.apple.dock no-bouncing -bool true"

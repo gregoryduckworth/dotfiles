@@ -110,7 +110,7 @@ jobs:
         run: |
           # install.sh links into the checkout, so these must be symlinks
           # pointing at this working copy rather than copies of it.
-          for link in scripts .zshrc; do
+          for link in scripts .zshrc .zprofile; do
             target="$(readlink "$HOME_SANDBOX/$link")" ||
               { echo "~/$link is not a symlink"; exit 1; }
             [ "$target" = "$PWD/$link" ] ||
@@ -129,6 +129,7 @@ jobs:
           # diff follows the symlinks it is handed, so this compares contents.
           diff -r scripts "$HOME_SANDBOX/scripts"
           diff .zshrc "$HOME_SANDBOX/.zshrc"
+          diff .zprofile "$HOME_SANDBOX/.zprofile"
 
       # The test suite stands in a fake oh-my-zsh. This starts a real
       # interactive shell on the installed profile and the oh-my-zsh that

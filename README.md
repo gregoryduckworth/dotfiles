@@ -53,20 +53,28 @@ It includes the repo's `gitconfig` from `~/.gitconfig` (`[include] path =
 Your name, email and credential helpers stay in `~/.gitconfig`, where
 `git config --global` and `gh auth setup-git` write them. The include is added
 at the end of `~/.gitconfig`, so these settings win over the same keys set
-earlier in it; to override one, add it after the `[include]`.
+earlier in it; to override one, add it after the `[include]`. When it first
+adds the include, `install.sh` lists any of these keys `~/.gitconfig` already
+sets to something else.
 
 It does not copy anything into `$HOME`; it symlinks:
 
 ```
-~/.zshrc  -> <checkout>/.zshrc
-~/scripts -> <checkout>/scripts
+~/.zshrc    -> <checkout>/.zshrc
+~/.zprofile -> <checkout>/.zprofile
+~/scripts   -> <checkout>/scripts
 ```
+
+`.zprofile` is read by login shells - new terminal windows, `zsh -l`, and the
+login shell GUI apps such as VS Code start to read your environment - and puts
+Homebrew on `$PATH` there with `brew shellenv`, as Homebrew's install
+instructions say. A plain `zsh -c` reads neither file.
 
 So updating is just a `git pull` in the checkout - there is no second copy to
 re-install or to go stale, and editing a script in `~/scripts` is the same thing
 as editing it in the checkout.
 
-If a real `~/.zshrc` or `~/scripts` is already there, it is moved aside to
+If a real `~/.zshrc`, `~/.zprofile` or `~/scripts` is already there, it is moved aside to
 `~/.zshrc.backup-<timestamp>` rather than clobbered. Links from an earlier
 install are simply repointed.
 
@@ -223,7 +231,7 @@ EOF
 ```
 
 The file lives in `$HOME`, outside the checkout, and `install.sh` never touches
-it: only `~/.zshrc` and `~/scripts` are linked. `.gitignore` covers it so a copy
+it: only `~/.zshrc`, `~/.zprofile` and `~/scripts` are linked. `.gitignore` covers it so a copy
 made inside the checkout cannot be committed by a stray `gaa` (`git add --all`).
 
 ## Tests
@@ -258,9 +266,10 @@ Every push to `main` and every pull request runs `.github/workflows/ci.yml`:
   tests.
 - **Tests** (Ubuntu and macOS) - `./tests/run.sh`.
 - **Run install.sh** (macOS) - runs `install.sh` end to end against a throwaway
-  `$HOME`, twice, then checks the installed paths are symlinks into the checkout,
-  that oh-my-zsh was cloned, that `~/.gitconfig` includes `gitconfig` exactly
-  once, and diffs the linked files against the repo.
+  `$HOME`, twice, then checks that `.zshrc`, `.zprofile` and `scripts` are
+  symlinks into the checkout, that oh-my-zsh was cloned, that `~/.gitconfig`
+  includes `gitconfig` exactly once, and diffs the linked files against the
+  repo.
   Then it opens an interactive shell on the installed profile and the real
   oh-my-zsh - the test suite only uses a stand-in - and fails if anything is
   written to stderr or the theme and git aliases are missing.
