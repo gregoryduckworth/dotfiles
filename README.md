@@ -128,10 +128,9 @@ options and completions of its own, and anything here - or in
 `~/.zshrc.local` - is meant to win over them. Nothing in `scripts/` redefines
 an oh-my-zsh alias today.
 
-Besides the plugins, oh-my-zsh's own `lib/` provides what used to be separate
-files here: completion (`compinit`, menu selection, case-insensitive
-matching), a 50k-line shared history in `~/.zsh_history`, and `AUTO_CD` with
-the directory stack.
+Besides the plugins, oh-my-zsh's own `lib/` provides completion (`compinit`,
+menu selection, case-insensitive matching), a 50k-line shared history in
+`~/.zsh_history`, and `AUTO_CD` with the directory stack.
 
 - **`ZSH_THEME="robbyrussell"`** - oh-my-zsh's default theme draws the
   prompt, git branch and dirty marker included. Nothing in `scripts/` sets
@@ -228,3 +227,6 @@ Every push to `main` and every pull request runs `.github/workflows/ci.yml`:
 - **Run install.sh** (macOS) - runs `install.sh` end to end against a throwaway
   `$HOME`, twice, then checks the installed paths are symlinks into the checkout,
   that oh-my-zsh was cloned, and diffs the linked files against the repo.
+  Then it opens an interactive shell on the installed profile and the real
+  oh-my-zsh - the test suite only uses a stand-in - and fails if anything is
+  written to stderr or the theme and git aliases are missing.

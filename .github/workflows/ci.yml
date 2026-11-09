@@ -124,3 +124,19 @@ jobs:
           # diff follows the symlinks it is handed, so this compares contents.
           diff -r scripts "$HOME_SANDBOX/scripts"
           diff .zshrc "$HOME_SANDBOX/.zshrc"
+
+      # The test suite stands in a fake oh-my-zsh. This starts a real
+      # interactive shell on the installed profile and the oh-my-zsh that
+      # install.sh just cloned, so a broken plugin or a typo in scripts/ fails
+      # here rather than on the next new terminal.
+      - name: Start a shell on the installed profile
+        run: |
+          errors="$(HOME="$HOME_SANDBOX" zsh -i -c '
+            [[ $ZSH_THEME == robbyrussell ]] || { echo "no oh-my-zsh theme" >&2; exit 1; }
+            alias gst >/dev/null || { echo "no oh-my-zsh git aliases" >&2; exit 1; }
+          ' 2>&1 >/dev/null)" || { echo "$errors"; exit 1; }
+          if [ -n "$errors" ]; then
+            echo "A new shell wrote to stderr:"
+            echo "$errors"
+            exit 1
+          fi

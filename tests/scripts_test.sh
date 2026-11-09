@@ -39,8 +39,6 @@ test_every_script_exits_cleanly_on_its_own() {
 
 test_browserstack_keeps_credentials_from_the_environment() {
   skip_unless_command zsh
-  # The file used to export empty strings unconditionally, so every new shell
-  # wiped out credentials the environment already carried.
   export BROWSERSTACK_USERNAME=someone BROWSERSTACK_ACCESS_KEY=s3cret
 
   assert_eq "someone" "$(zsh_script browserstack 'echo $BROWSERSTACK_USERNAME')"
@@ -138,7 +136,7 @@ test_oh_my_zsh_enables_the_expected_plugins() {
   plugins="$(zsh_script oh-my-zsh 'echo $plugins')"
 
   # git and docker supply the aliases, nvm/pyenv/rbenv load the version
-  # managers; nothing in scripts/ does either any more.
+  # managers; nothing in scripts/ does either.
   assert_eq "git brew docker gh nvm pyenv rbenv" "$plugins"
 }
 

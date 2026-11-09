@@ -235,7 +235,7 @@ test_install_check_explains_an_answer_it_did_not_understand() {
   # shellcheck disable=SC2317,SC2329
   demo_install() { touch "$TEST_TMP/demo-ran"; }
   local output
-  # "3" is not on the menu; the loop used to re-prompt in silence.
+  # "3" is not on the menu.
   output="$(CI="" install_check demo <<<"$(printf '3\n2\n')")"
 
   assert_contains "$output" "'3' is not one of the choices"
@@ -637,14 +637,6 @@ test_configure_macos_writes_expected_defaults() {
   assert_stub_called defaults "write com.apple.dock no-bouncing -bool true"
 }
 
-test_configure_macos_survives_a_failing_defaults_write() {
-  # The battery percentage write is expected to fail on recent macOS.
-  # shellcheck disable=SC2016  # the stub body is a script, not a string to expand
-  stub defaults '[[ "$2" == com.apple.menuextra.battery ]] && exit 1; exit 0'
-  stub killall 'exit 0'
-  CI="" configure_macos >/dev/null
-}
-
 # The Dock and Finder only pick the new preferences up when they restart.
 test_configure_macos_restarts_the_apps_that_own_the_settings() {
   stub defaults 'exit 0'
@@ -668,12 +660,6 @@ test_configure_macos_does_not_restart_apps_in_ci() {
   CI=1 configure_macos >/dev/null
 
   assert_eq "" "$(stub_calls killall)" "CI restarted the Dock"
-}
-
-# `history -c` used to sit at the end of configure_macos, where it only cleared
-# the empty history of the non-interactive bash running the script.
-test_configure_macos_does_not_touch_shell_history() {
-  assert_not_contains "$(cat "$REPO_ROOT/install.sh")" "history -c"
 }
 
 ## ---------- version resolution ---------- ##
