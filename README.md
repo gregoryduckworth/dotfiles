@@ -138,13 +138,16 @@ the directory stack.
     which on Apple Silicon is what puts it there: nothing else in this repo,
     and no `~/.zprofile`, does.
   - `nvm`, `pyenv`, `rbenv`: load the version managers `install.sh` sets up,
-    each skipped when its tool is not installed. nvm loads eagerly, so `node`,
-    global npm tools and git hooks that call `npx` always work. It is most of
-    the startup time - about 0.65 s of 1 s. Adding
-    `zstyle ':omz:plugins:nvm' lazy yes` next to `plugins=` in
-    `scripts/oh-my-zsh` trades that for nvm loading on the first
-    `node`/`npm`/`nvm`, with global tools and hooks unavailable until then.
-    (`~/.zshrc.local` is too late for it: the plugin has already run.)
+    each skipped when its tool is not installed. nvm is lazy-loaded
+    (`zstyle ':omz:plugins:nvm' lazy yes`): loading it was most of the
+    startup time, about 0.65 s of 1 s, so it now loads on the first `nvm`,
+    `node`, `npm`, `npx`, `yarn`, `pnpm` or `corepack` instead. Until then,
+    global npm tools (`tsc`, `eslint`, ...) are not on `$PATH`, and nor are
+    they for git hooks that call them - run `node -v` once in a new terminal
+    first. To lazy-load on a global tool too, add it to the plugin's
+    `lazy-cmd` style in `scripts/oh-my-zsh`; to load eagerly again, delete the
+    `lazy` line. (`~/.zshrc.local` is too late for either: the plugin has
+    already run.)
 - **Homebrew completions.** `scripts/oh-my-zsh` puts Homebrew's
   `share/zsh/site-functions` on `$fpath` before oh-my-zsh runs `compinit`, as
   Homebrew's instructions say. The `brew` plugin adds it too, but only after
