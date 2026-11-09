@@ -8,6 +8,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOMEBREW_INSTALLER="https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh"
 OH_MY_ZSH_REPO="https://github.com/ohmyzsh/ohmyzsh.git"
 
+# The zsh set_login_shell prefers: the one macOS ships, which is already listed
+# in /etc/shells and does not disappear with a `brew uninstall`. Variables
+# rather than literals so the tests can point them at a sandbox.
+SYSTEM_ZSH="/bin/zsh"
+SHELLS_FILE="/etc/shells"
+
 # Set by --dry-run. Every command that changes the machine goes through run(),
 # so flipping this to 1 turns the whole script into a description of itself.
 DRY_RUN=0
@@ -18,7 +24,7 @@ Usage: install.sh [options]
 
 Bootstraps a machine: installs Homebrew, offers each group of optional
 dependencies in turn, installs oh-my-zsh, symlinks scripts/ and .zshrc into
-$HOME, and writes a few macOS defaults.
+$HOME, makes zsh the login shell, and writes a few macOS defaults.
 
 Options:
   -n, --dry-run  Print the commands that would change the machine, and run
@@ -155,6 +161,77 @@ source_profile() {
   link_into_checkout "$SCRIPT_DIR/.$1" "$HOME/.$1"
 
   echo "Run 'exec zsh' or open a new terminal to load .$1"
+}
+
+# Prints the current user's login shell from the account database. $SHELL is
+# only the fallback: it is set once at login and goes stale after a chsh.
+login_shell() {
+  local user shell=""
+  user="$(id -un)"
+
+  if command -v dscl &>/dev/null; then
+    shell="$(dscl . -read "/Users/$user" UserShell 2>/dev/null | awk '{print $2}')"
+  elif command -v getent &>/dev/null; then
+    shell="$(getent passwd "$user" | cut -d: -f7)"
+  fi
+
+  printf '%s\n' "${shell:-${SHELL:-}}"
+}
+
+# Prints the zsh to make the login shell: $SYSTEM_ZSH when it exists, otherwise
+# whichever zsh is first on $PATH.
+zsh_path() {
+  if [[ -x "$SYSTEM_ZSH" ]]; then
+    printf '%s\n' "$SYSTEM_ZSH"
+    return 0
+  fi
+  command -v zsh
+}
+
+# Makes zsh the login shell, so every new terminal - iTerm2, Terminal, VS
+# Code's - starts the zsh this repo configures rather than whatever the
+# account was created with.
+#
+# Never fatal: chsh asks for a password, and a mistyped one should not abort a
+# bootstrap that has already installed everything else.
+set_login_shell() {
+  local current zsh
+  current="$(login_shell)"
+
+  if [[ "${current##*/}" == zsh ]]; then
+    echo "zsh is already the login shell ($current)"
+    return 0
+  fi
+
+  if [[ -n "${CI:-}" ]]; then
+    echo "Running in CI mode, leaving the login shell (${current:-unknown}) alone..."
+    return 0
+  fi
+
+  if ! zsh="$(zsh_path)"; then
+    echo "Warning: zsh is not installed, so the login shell was left as ${current:-unknown}" >&2
+    return 0
+  fi
+
+  # chsh refuses any shell that is not listed in /etc/shells.
+  if ! grep -Fqx "$zsh" "$SHELLS_FILE" 2>/dev/null; then
+    echo "Adding $zsh to $SHELLS_FILE..."
+    # Not run through run(): the line reaches tee on stdin, which a dry run's
+    # echo would swallow.
+    if [[ $DRY_RUN -eq 1 ]]; then
+      echo "[dry-run] echo $zsh | sudo tee -a $SHELLS_FILE"
+    elif ! printf '%s\n' "$zsh" | sudo tee -a "$SHELLS_FILE" >/dev/null; then
+      echo "Warning: could not add $zsh to $SHELLS_FILE; the login shell is still ${current:-unknown}" >&2
+      return 0
+    fi
+  fi
+
+  echo "Changing the login shell from ${current:-unknown} to $zsh..."
+  if ! run chsh -s "$zsh"; then
+    echo "Warning: chsh failed; run 'chsh -s $zsh' to make zsh the login shell" >&2
+    return 0
+  fi
+  echo "New terminals will start zsh"
 }
 
 install_check() {
@@ -413,6 +490,7 @@ main() {
   install_check "node"
   oh_my_zsh_install
   source_profile "zshrc"
+  set_login_shell
   configure_macos
   homebrew_cleanup
   echo "Bootstrapping Complete!"

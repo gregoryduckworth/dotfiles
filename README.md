@@ -17,9 +17,19 @@ anywhere, and it is safe to re-run.
 
 It installs [oh-my-zsh](https://github.com/ohmyzsh/ohmyzsh) into
 `~/.oh-my-zsh` - a plain `git clone`, because the other half of oh-my-zsh's own
-installer is writing a `.zshrc` and running `chsh`, and this repo owns the
-first and does not ask for the second. A clone is all `omz update` needs, and
-a machine that already has one is left alone.
+installer is writing a `.zshrc` and running `chsh`, and this repo does both of
+those itself. A clone is all `omz update` needs, and a machine that already has
+one is left alone.
+
+It makes zsh the login shell, so every new terminal - iTerm2, Terminal, VS
+Code's - starts the zsh this repo configures. It reads the current shell from
+the account database (`dscl` on macOS), and when that is not already a zsh it
+runs `chsh -s /bin/zsh`, which asks for your password. `/bin/zsh` is preferred
+over a Homebrew zsh because macOS ships it and already lists it in
+`/etc/shells`; on a machine without it, the first `zsh` on `$PATH` is added to
+`/etc/shells` (with `sudo`) and used instead. A failed `chsh` prints the
+command to run by hand rather than stopping the bootstrap, and the step is
+skipped in CI.
 
 It does not copy anything into `$HOME`; it symlinks:
 
@@ -118,7 +128,9 @@ It is configured, not adopted wholesale:
 - **No theme.** `scripts/git` owns `$PROMPT`, so a theme would only be read
   and then overwritten.
 - **`plugins=(brew docker gh)`** - completion and aliases for tools this repo
-  already installs. `git` is deliberately absent: `scripts/github` owns the git
+  already installs. `brew` also runs `brew shellenv` when Homebrew is not on
+  `$PATH` yet, which on Apple Silicon is what puts it there: nothing else in
+  this repo, and no `~/.zprofile`, does. `git` is deliberately absent: `scripts/github` owns the git
   aliases, and the plugin's own hundred-odd would be shadowed where the two
   overlap and left standing where they do not.
 - **`zstyle ':omz:update' mode reminder`** - the default stops and asks, which
@@ -172,11 +184,13 @@ made inside the checkout cannot be committed by a stray `gaa` (`git add .`).
 The suite needs nothing but `bash` and `zsh`, so it runs on a machine this repo
 has not bootstrapped yet. Each test runs in its own subshell with a throwaway
 `$HOME` and a stub directory at the front of `$PATH`, so a test can never touch
-the real machine or run a real `brew`, `defaults` or `sudo`.
+the real machine or run a real `brew`, `defaults`, `chsh` or `sudo`. The
+variables a loaded oh-my-zsh or nvm exports (`ZSH`, `NVM_DIR`, ...) are cleared
+too, so the suite gives the same answer from a fully set-up shell as from CI.
 
 | File | Covers |
 | --- | --- |
-| `tests/install_test.sh` | `install.sh` functions: `brew bundle` installs, the CI/interactive prompt, the symlinks into `$HOME` and their backup and failure paths, macOS defaults |
+| `tests/install_test.sh` | `install.sh` functions: `brew bundle` installs, the CI/interactive prompt, the symlinks into `$HOME` and their backup and failure paths, the login shell, macOS defaults |
 | `tests/brewfile_test.sh` | the Brewfiles: every one is installed by `install.sh`, and every entry is a directive `brew bundle` understands |
 | `tests/profile_test.sh` | `.zshrc`: loading `scripts/`, loading oh-my-zsh first and exactly once, sourcing `~/.zshrc.local` last, and coping with a missing or empty `~/scripts` |
 | `tests/scripts_test.sh` | each file in `scripts/`: parses, exits cleanly, and defines the expected aliases, exports and functions |
