@@ -96,7 +96,6 @@ order, so the filenames decide the order.
 | `completion` | `compinit`, case-insensitive matching, arrow-key menu selection |
 | `docker` | Docker aliases and BuildKit |
 | `editor` | `$EDITOR` and `$VISUAL` |
-| `git` | The prompt; the branch comes from oh-my-zsh's `git_prompt_info` |
 | `github` | `git` and `gh` aliases |
 | `history` | A 50k-line shared history that dedupes |
 | `homebrew` | Homebrew's curl on `$PATH` |
@@ -125,12 +124,11 @@ because oh-my-zsh's git plugin does.
 
 It is configured, not adopted wholesale:
 
-- **No theme.** `scripts/git` owns `$PROMPT`, so a theme would only be read
-  and then overwritten. The branch in it still comes from oh-my-zsh: its
-  `git_prompt_info` (from `lib/`, so no plugin needed) looks the branch up
-  asynchronously rather than forking `git` on every prompt. oh-my-zsh only
-  starts that lookup when `$PROMPT` contains `$(git_prompt_info)` written
-  exactly so. Without oh-my-zsh the prompt simply has no branch.
+- **`ZSH_THEME="robbyrussell"`** - oh-my-zsh's default theme draws the
+  prompt, git branch and dirty marker included. Nothing in `scripts/` sets
+  `$PROMPT`, and `tests/scripts_test.sh` keeps it that way, since a file
+  sourced after oh-my-zsh would silently replace the theme's. Without
+  oh-my-zsh you get zsh's plain default prompt.
 - **`plugins=(brew docker gh)`** - completion and aliases for tools this repo
   already installs. `brew` also runs `brew shellenv` when Homebrew is not on
   `$PATH` yet, which on Apple Silicon is what puts it there: nothing else in

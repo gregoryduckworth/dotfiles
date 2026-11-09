@@ -220,60 +220,6 @@ test_gbc_gives_up_outside_a_repository() {
   assert_contains "$errors" "gbc: cannot work out which branch to compare against"
 }
 
-## ---------- scripts/git ---------- ##
-
-# Renders $PROMPT the way the line editor would, minus the colour escapes.
-render_prompt() {
-  printf '%s' "$1" | sed $'s/\x1b\\[[0-9;]*m//g'
-}
-
-test_prompt_shows_the_branch_from_oh_my_zsh() {
-  skip_unless_command zsh
-  local rendered
-  # A stand-in for oh-my-zsh's git_prompt_info, which wraps the branch in the
-  # prefix and suffix scripts/git sets. scripts/git must not replace it.
-  # shellcheck disable=SC2016  # expanded by zsh, not here
-  rendered="$(zsh -c '
-    set -e
-    git_prompt_info() {
-      print -rn -- "${ZSH_THEME_GIT_PROMPT_PREFIX}feature/example${ZSH_THEME_GIT_PROMPT_SUFFIX}"
-    }
-    source "$1"
-    cd /
-    print -P -- "$PROMPT"' zsh "$REPO_ROOT/scripts/git")"
-
-  assert_eq "$(id -un) / [feature/example] \$ " "$(render_prompt "$rendered")"
-}
-
-test_prompt_uses_git_prompt_info_verbatim() {
-  skip_unless_command zsh
-  # oh-my-zsh only starts its async branch lookup when the prompt contains
-  # exactly `$(git_prompt_info)`; a redirect or argument added inside the
-  # parentheses would leave the branch blank forever.
-  # shellcheck disable=SC2016  # the literal text is the point
-  assert_contains "$(zsh_script git 'echo $PROMPT')" '$(git_prompt_info)'
-  # Without PROMPT_SUBST the prompt would show the literal command instead.
-  assert_eq "on" "$(zsh_script git 'echo $options[promptsubst]')"
-}
-
-test_prompt_drops_the_branch_quietly_without_oh_my_zsh() {
-  skip_unless_command zsh
-  local rendered errors
-  errors="$(zsh_script git 'cd /; print -P -- "$PROMPT"' 2>&1 >"$TEST_TMP/out")" ||
-    fail "the prompt failed to render without oh-my-zsh"
-  rendered="$(cat "$TEST_TMP/out")"
-
-  assert_eq "" "$errors" "the prompt complained without oh-my-zsh"
-  assert_eq "$(id -un) / \$ " "$(render_prompt "$rendered")"
-}
-
-test_prompt_does_not_mark_a_dirty_branch() {
-  skip_unless_command zsh
-  # oh-my-zsh's default is a trailing `*`; this prompt never had one.
-  assert_eq "|" \
-    "$(zsh_script git 'echo "$ZSH_THEME_GIT_PROMPT_DIRTY|$ZSH_THEME_GIT_PROMPT_CLEAN"')"
-}
-
 ## ---------- scripts/nvm ---------- ##
 
 test_nvm_is_loaded_when_installed() {
@@ -632,11 +578,20 @@ test_oh_my_zsh_honours_an_existing_zsh_directory() {
     "$(ZSH="$TEST_TMP/elsewhere" zsh_script oh-my-zsh 'echo $OMZ_LOADED')"
 }
 
-test_oh_my_zsh_loads_no_theme() {
+test_oh_my_zsh_draws_the_prompt_with_its_default_theme() {
   skip_unless_command zsh
   fake_oh_my_zsh
-  # scripts/git sets $PROMPT, and is sourced after this file.
-  assert_eq "" "$(zsh_script oh-my-zsh 'echo $ZSH_THEME')"
+  # Nothing in scripts/ sets $PROMPT, so the theme is what draws it.
+  assert_eq "robbyrussell" "$(zsh_script oh-my-zsh 'echo $ZSH_THEME')"
+}
+
+test_no_script_overrides_the_oh_my_zsh_prompt() {
+  # A $PROMPT set in scripts/ is sourced after oh-my-zsh and would silently
+  # replace the theme's.
+  local hits
+  hits="$(grep -lE '^[[:space:]]*(export[[:space:]]+)?(PROMPT|PS1|RPROMPT)=' \
+    "$REPO_ROOT"/scripts/* || true)"
+  assert_eq "" "$hits" "scripts that set the prompt"
 }
 
 test_oh_my_zsh_enables_the_expected_plugins() {

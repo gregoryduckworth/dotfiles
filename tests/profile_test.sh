@@ -20,7 +20,6 @@ test_profile_loads_every_script() {
   # One representative from each file in scripts/.
   assert_eq "1" "$(zsh_profile 'echo $DOCKER_BUILDKIT')" "scripts/docker"
   assert_eq "0" "$(zsh_profile 'alias gs >/dev/null; echo $?')" "scripts/github"
-  assert_contains "$(zsh_profile 'echo $PROMPT')" 'git_prompt_info' "scripts/git"
   assert_contains "$(zsh_profile 'echo $CHROME')" "Google" "scripts/browserstack"
   assert_contains "$(zsh_profile 'echo $NVM_DIR')" ".nvm" "scripts/nvm"
   assert_contains "$(zsh_profile 'echo $HISTFILE')" ".zsh_history" "scripts/history"
