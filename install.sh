@@ -26,9 +26,9 @@ Usage: install.sh [options]
 
 Bootstraps a machine: installs Homebrew, offers each group of optional
 dependencies in turn, installs oh-my-zsh, symlinks scripts/, .zshrc and
-.zprofile into $HOME, includes the shared git settings from ~/.gitconfig,
-installs Claude Code, makes zsh the login shell, and writes a few macOS
-defaults.
+.zprofile into $HOME, includes the shared git settings from ~/.gitconfig
+(and asks for a git name and email if none is set), installs Claude Code,
+makes zsh the login shell, and writes a few macOS defaults.
 
 Options:
   -n, --dry-run  Print the commands that would change the machine, and run
@@ -142,6 +142,19 @@ claude_install() {
   fi
 }
 
+# installed_link <target> <link>: succeeds when <link> is a symlink install.sh
+# made, into this checkout or an older one. A link into an older checkout
+# names the same file, in a directory that holds an install.sh or is gone.
+installed_link() {
+  local target="$1" link="$2" current
+  [[ -L "$link" ]] || return 1
+  current="$(readlink "$link")"
+  [[ "$current" == /* ]] || current="$(dirname "$link")/$current"
+  [[ "$current" == "$target" ]] && return 0
+  [[ "$(basename "$current")" == "$(basename "$target")" ]] || return 1
+  [[ ! -e "$current" || -f "$(dirname "$current")/install.sh" ]]
+}
+
 # link_into_checkout <target> <link>
 #
 # Points <link> at <target>, so the installed dotfiles are the checkout rather
@@ -149,9 +162,9 @@ claude_install() {
 link_into_checkout() {
   local target="$1" link="$2" backup
 
-  # A symlink here is one we installed, so it is replaced silently. Anything
-  # else is the user's own file and is moved aside instead of clobbered.
-  if [[ -e "$link" && ! -L "$link" ]]; then
+  # A link install.sh made is replaced silently. Anything else, a symlink of
+  # the user's own included, is moved aside instead of clobbered.
+  if [[ -e "$link" || -L "$link" ]] && ! installed_link "$target" "$link"; then
     backup="$link.backup-$(date +%Y%m%d%H%M%S)"
     echo "Moving existing $link aside to $backup..."
     run mv "$link" "$backup"
@@ -225,6 +238,108 @@ git_config_install() {
 
   echo "Including $gitconfig from ~/.gitconfig..."
   run git config --global --add include.path "$gitconfig"
+}
+
+# Prints the identity git has for user.<key> (name or email) everywhere, not
+# just in some repositories: from GIT_AUTHOR_* and GIT_COMMITTER_*, which git
+# takes even with useConfigOnly, or else from the global or system config and
+# the files they include. Read from /, outside any repository, so neither a
+# repository's own config nor an includeIf "gitdir:..." that matches the
+# directory install.sh was started from counts.
+git_identity() {
+  local upper author committer
+  upper="$(tr '[:lower:]' '[:upper:]' <<<"$1")"
+  author="GIT_AUTHOR_$upper"
+  committer="GIT_COMMITTER_$upper"
+  if [[ -n "${!author:-}" && -n "${!committer:-}" ]]; then
+    echo "${!author}"
+    return 0
+  fi
+  (cd / && {
+    git config --global --includes --get "user.$1" ||
+      git config --system --includes --get "user.$1"
+  }) 2>/dev/null
+}
+
+# Succeeds when a file ~/.gitconfig includes only under a condition (an
+# includeIf block) sets user.<key>: an identity for some directories only.
+git_identity_is_scoped() {
+  local _ path
+  while read -r _ path; do
+    # Paths are taken as git does: ~/ is $HOME, and a relative path is
+    # relative to ~/.gitconfig.
+    case "$path" in
+      \~/*) path="$HOME/${path#\~/}" ;;
+      /*) ;;
+      *) path="$HOME/$path" ;;
+    esac
+    [[ -n "$(git config --file "$path" --get "user.$1" 2>/dev/null)" ]] && return 0
+  done < <(git config --global --get-regexp '^includeif\..*\.path$' 2>/dev/null)
+  return 1
+}
+
+# Identity is per machine, so it is never in the shared gitconfig, and that
+# sets user.useConfigOnly: without a name and email git refuses to commit, and
+# to stash, which `git pull` does itself under rebase.autoStash. So ask for
+# whichever is missing now rather than fail at the first commit. CI and a dry
+# run are not asked; they, and a blank answer, get the commands to run instead.
+#
+# One set only in includeIf blocks is not asked for: `git config --global`
+# would append it after those blocks, where it would override them in the
+# very directories they cover.
+git_identity_setup() {
+  local key value are missing=() scoped=() unset_keys=()
+
+  for key in name email; do
+    value="$(git_identity "$key")" || value=""
+    if [[ -n "$value" ]]; then
+      continue
+    elif git_identity_is_scoped "$key"; then
+      scoped+=("$key")
+    else
+      missing+=("$key")
+    fi
+  done
+
+  if [[ ${#scoped[@]} -gt 0 ]]; then
+    are=is
+    [[ ${#scoped[@]} -eq 1 ]] || are=are
+    echo
+    echo "Note: your git ${scoped[0]}${scoped[1]:+ and ${scoped[1]}} $are only set by includeIf blocks in ~/.gitconfig,"
+    echo "so outside their directories git refuses to commit. For a default, add a"
+    echo "[user] section above those blocks (\`git config --global\` would add it"
+    echo "below them, where it would override them)."
+  fi
+  [[ ${#missing[@]} -gt 0 ]] || return 0
+
+  if [[ -z "${CI:-}" && $DRY_RUN -eq 0 ]]; then
+    for key in "${missing[@]}"; do
+      # Prompted on stderr by hand: read -p only shows its prompt when stdin is
+      # a terminal, and `ssh host ./install.sh` would look hung without it.
+      # End of input counts as blank.
+      printf 'Your git user.%s (blank to skip): ' "$key" >&2
+      read -r value || value=""
+      if [[ -n "$value" ]]; then
+        run git config --global "user.$key" "$value"
+      else
+        unset_keys+=("$key")
+      fi
+    done
+  else
+    unset_keys=("${missing[@]}")
+  fi
+  [[ ${#unset_keys[@]} -gt 0 ]] || return 0
+
+  echo
+  echo "Warning: git does not know your ${unset_keys[0]}${unset_keys[1]:+ or ${unset_keys[1]}} yet. With the shared gitconfig,"
+  echo "it refuses to commit or stash until you run:"
+  for key in "${unset_keys[@]}"; do
+    case "$key" in
+      name) echo '  git config --global user.name "Your Name"' ;;
+      email) echo '  git config --global user.email "you@example.com"' ;;
+    esac
+  done
+  echo
 }
 
 # Prints the current user's login shell from the account database. $SHELL is
@@ -593,6 +708,7 @@ main() {
   oh_my_zsh_install
   source_profile "zshrc"
   git_config_install
+  git_identity_setup
   claude_install
   set_login_shell
   configure_macos

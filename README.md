@@ -49,6 +49,7 @@ It includes the repo's `gitconfig` from `~/.gitconfig` (`[include] path =
 | `rebase.autoStash = true` | ...even with uncommitted changes |
 | `push.autoSetupRemote = true` | the first `git push` of a branch sets its upstream |
 | `fetch.prune = true` | fetches drop remote branches that are gone |
+| `user.useConfigOnly = true` | git refuses to commit until your name and email are set, rather than guessing them from the machine |
 
 Your name, email and credential helpers stay in `~/.gitconfig`, where
 `git config --global` and `gh auth setup-git` write them. The include is added
@@ -56,6 +57,20 @@ at the end of `~/.gitconfig`, so these settings win over the same keys set
 earlier in it; to override one, add it after the `[include]`. When it first
 adds the include, `install.sh` lists any of these keys `~/.gitconfig` already
 sets to something else.
+
+Because of `user.useConfigOnly`, git won't commit (or stash, which `git pull`
+does under `rebase.autoStash`) until your name and email are set. So on every
+run `install.sh` asks for whichever is missing and saves it to `~/.gitconfig`.
+In CI, in a dry run, or if you leave an answer blank, it prints the
+`git config --global user.name` / `user.email` commands to run instead. A name
+or email counts if it is in the system config, `~/.gitconfig` or a file it
+includes, or in both the `GIT_AUTHOR_*` and `GIT_COMMITTER_*` variables. One
+that only a repository's own config sets doesn't count, and nor does one set
+only in `includeIf "gitdir:..."` blocks: those apply inside their directories
+alone. For an `includeIf` identity, `install.sh` doesn't ask (a
+`git config --global` answer would land after the blocks and override them in
+their own directories). It prints a note instead: to have a default elsewhere,
+put a `[user]` section above the `includeIf` blocks.
 
 It does not copy anything into `$HOME`; it symlinks:
 
@@ -75,8 +90,10 @@ re-install or to go stale, and editing a script in `~/scripts` is the same thing
 as editing it in the checkout.
 
 If a real `~/.zshrc`, `~/.zprofile` or `~/scripts` is already there, it is moved aside to
-`~/.zshrc.backup-<timestamp>` rather than clobbered. Links from an earlier
-install are simply repointed.
+`~/.zshrc.backup-<timestamp>` rather than clobbered, and so is a symlink of your
+own (to a synced profile, say). Links from an earlier install are simply
+repointed: ones into this checkout, or to the same file in an older checkout
+that has since moved or been deleted.
 
 `install.sh` prompts for each group of optional dependencies (packages, ruby,
 python, node); set `CI` to a non-empty value to decline all of them without
@@ -108,6 +125,13 @@ oh-my-zsh's nvm plugin finds no `nvm.sh` in `~/.nvm`, so new terminals have no
 `node`, `npm` or `npx`. The re-run installs nvm into the existing `~/.nvm`
 without touching the node versions in it; `brew uninstall nvm` afterwards is
 optional.
+
+The shared `gitconfig` now sets `user.useConfigOnly`, and a `git pull` is
+enough for it to take effect. So before pulling on a machine without a git name
+and email (`git config user.name` and `git config user.email` print nothing),
+set them, or re-run `./install.sh`, which asks for them. Otherwise commits, and
+pulls that stash local changes, fail with "no email was given and
+auto-detection is disabled".
 
 ## Packages
 
@@ -246,11 +270,12 @@ has not bootstrapped yet. Each test runs in its own subshell with a throwaway
 `$HOME` and a stub directory at the front of `$PATH`, so a test can never touch
 the real machine or run a real `brew`, `defaults`, `chsh` or `sudo`. The
 variables a loaded oh-my-zsh or nvm exports (`ZSH`, `NVM_DIR`, ...) are cleared
-too, so the suite gives the same answer from a fully set-up shell as from CI.
+too, and git skips the system config (`GIT_CONFIG_NOSYSTEM`), so the suite gives
+the same answer from a fully set-up shell as from CI.
 
 | File | Covers |
 | --- | --- |
-| `tests/install_test.sh` | `install.sh` functions: `brew bundle` installs, the CI/interactive prompt, the nvm clone, the Claude Code install, the `gitconfig` include, the symlinks into `$HOME` and their backup and failure paths, the login shell, macOS defaults |
+| `tests/install_test.sh` | `install.sh` functions: `brew bundle` installs, the CI/interactive prompt, the nvm clone, the Claude Code install, the `gitconfig` include and the git identity prompt, the symlinks into `$HOME` and their backup and failure paths, the login shell, macOS defaults |
 | `tests/brewfile_test.sh` | the Brewfiles: every one is installed by `install.sh`, every entry is a directive `brew bundle` understands, and none declares nvm or node |
 | `tests/profile_test.sh` | `.zshrc`: loading `scripts/`, loading oh-my-zsh first and exactly once, sourcing `~/.zshrc.local` last, and coping with a missing or empty `~/scripts` |
 | `tests/scripts_test.sh` | each file in `scripts/`: parses, exits cleanly, and defines the expected aliases, exports and functions |
