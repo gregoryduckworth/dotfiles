@@ -366,6 +366,23 @@ test_git_identity_setup_leaves_an_includeif_identity_alone() {
   assert_not_contains "$output" "user.email (blank to skip)"
 }
 
+test_git_identity_setup_leaves_an_includeif_identity_alone_in_a_directory_with_spaces() {
+  # git keeps the condition verbatim in the key, so the space is in the key
+  # `git config --get-regexp` prints, not only in the value.
+  local work output
+  work="$(cd "$TEST_TMP" && pwd -P)/Client Work"
+  printf '[user]\n\temail = work@example.com\n' >"$HOME/.gitconfig client"
+  git config --global "includeIf.gitdir:$work/.path" "$HOME/.gitconfig client"
+  git init -q "$work"
+  assert_eq "work@example.com" "$(git -C "$work" config --get user.email)"
+
+  output="$(CI="" git_identity_setup <<<"Some One" 2>&1)"
+
+  assert_eq "" "$(git config --global --no-includes --get user.email || true)"
+  assert_eq "work@example.com" "$(git -C "$work" config --get user.email)"
+  assert_contains "$output" "your git email is only set by includeIf blocks"
+}
+
 test_git_identity_setup_shows_its_prompt_when_stdin_is_not_a_terminal() {
   # read -p would print nothing here, as over `ssh host ./install.sh`.
   local prompt

@@ -264,8 +264,13 @@ git_identity() {
 # Succeeds when a file ~/.gitconfig includes only under a condition (an
 # includeIf block) sets user.<key>: an identity for some directories only.
 git_identity_is_scoped() {
-  local _ path
-  while read -r _ path; do
+  local entry path
+  # -z ends each entry with a NUL and puts a newline between key and value:
+  # the key keeps the condition verbatim, so it can hold spaces
+  # (gitdir:~/Client Work/), and splitting on whitespace would cut it there.
+  while IFS= read -r -d '' entry; do
+    [[ "$entry" == *$'\n'* ]] || continue # a bare `path` key has no value
+    path="${entry#*$'\n'}"
     # Paths are taken as git does: ~/ is $HOME, and a relative path is
     # relative to ~/.gitconfig.
     case "$path" in
@@ -274,7 +279,7 @@ git_identity_is_scoped() {
       *) path="$HOME/$path" ;;
     esac
     [[ -n "$(git config --file "$path" --get "user.$1" 2>/dev/null)" ]] && return 0
-  done < <(git config --global --get-regexp '^includeif\..*\.path$' 2>/dev/null)
+  done < <(git config --global -z --get-regexp '^includeif\..*\.path$' 2>/dev/null)
   return 1
 }
 
