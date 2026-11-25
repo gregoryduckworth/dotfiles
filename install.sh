@@ -263,23 +263,27 @@ git_identity() {
 
 # Succeeds when a file ~/.gitconfig includes only under a condition (an
 # includeIf block) sets user.<key>: an identity for some directories only.
+# Blocks in files ~/.gitconfig includes (say ~/.gitconfig.local) count too,
+# as does an identity the included file takes from its own includes.
 git_identity_is_scoped() {
   local entry path
   # -z ends each entry with a NUL and puts a newline between key and value:
   # the key keeps the condition verbatim, so it can hold spaces
   # (gitdir:~/Client Work/), and splitting on whitespace would cut it there.
+  # Listed from /, like git_identity, so no gitdir: condition matches the
+  # directory install.sh was started from and lists its target's blocks.
   while IFS= read -r -d '' entry; do
     [[ "$entry" == *$'\n'* ]] || continue # a bare `path` key has no value
     path="${entry#*$'\n'}"
     # Paths are taken as git does: ~/ is $HOME, and a relative path is
-    # relative to ~/.gitconfig.
+    # relative to the file holding the block, taken to be in $HOME.
     case "$path" in
       \~/*) path="$HOME/${path#\~/}" ;;
       /*) ;;
       *) path="$HOME/$path" ;;
     esac
-    [[ -n "$(git config --file "$path" --get "user.$1" 2>/dev/null)" ]] && return 0
-  done < <(git config --global -z --get-regexp '^includeif\..*\.path$' 2>/dev/null)
+    [[ -n "$(git config --file "$path" --includes --get "user.$1" 2>/dev/null)" ]] && return 0
+  done < <(cd / && git config --global --includes -z --get-regexp '^includeif\..*\.path$' 2>/dev/null)
   return 1
 }
 

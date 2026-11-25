@@ -383,6 +383,27 @@ test_git_identity_setup_leaves_an_includeif_identity_alone_in_a_directory_with_s
   assert_contains "$output" "your git email is only set by includeIf blocks"
 }
 
+test_git_identity_setup_finds_an_includeif_block_in_an_included_file() {
+  # e.g. a machine-local ~/.gitconfig.local holding the work/personal split.
+  local work
+  work="$(cd "$TEST_TMP" && pwd -P)/work"
+  printf '[user]\n\temail = work@example.com\n' >"$HOME/.gitconfig-work"
+  git config --file "$HOME/.gitconfig.local" "includeIf.gitdir:$work/.path" "$HOME/.gitconfig-work"
+  git config --global --add include.path "$HOME/.gitconfig.local"
+
+  assert_contains "$(CI=1 git_identity_setup)" "your git email is only set by includeIf blocks"
+}
+
+test_git_identity_setup_finds_an_identity_an_includeif_target_includes() {
+  local work
+  work="$(cd "$TEST_TMP" && pwd -P)/work"
+  printf '[user]\n\temail = work@example.com\n' >"$HOME/.gitconfig-work-identity"
+  git config --file "$HOME/.gitconfig-work" include.path "$HOME/.gitconfig-work-identity"
+  git config --global "includeIf.gitdir:$work/.path" "$HOME/.gitconfig-work"
+
+  assert_contains "$(CI=1 git_identity_setup)" "your git email is only set by includeIf blocks"
+}
+
 test_git_identity_setup_shows_its_prompt_when_stdin_is_not_a_terminal() {
   # read -p would print nothing here, as over `ssh host ./install.sh`.
   local prompt
