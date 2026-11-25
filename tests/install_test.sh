@@ -239,8 +239,221 @@ test_the_gitconfig_is_valid_and_sets_the_shared_settings() {
   assert_contains "$settings" "rebase.autostash=true"
   assert_contains "$settings" "push.autosetupremote=true"
   assert_contains "$settings" "fetch.prune=true"
-  # Identity is per machine, so it must never be tracked here.
-  assert_not_contains "$settings" "user."
+  assert_contains "$settings" "user.useconfigonly=true"
+  # Identity, signing keys and the like are per machine, so no other user.*
+  # setting may be tracked here.
+  assert_not_contains "$(grep -v '^user\.useconfigonly=' <<<"$settings")" "user."
+}
+
+test_the_gitconfig_stops_git_guessing_an_identity() {
+  git config --global --add include.path "$REPO_ROOT/gitconfig"
+  local repo="$TEST_TMP/repo" output
+  git init -q "$repo"
+
+  # Without user.useConfigOnly, git takes $EMAIL and the account's full name
+  # and commits. (Guessing from the hostname is no test: git already refuses a
+  # hostname with no domain.)
+  if output="$(EMAIL=guessed@example.com \
+    git -C "$repo" commit -q --allow-empty -m test 2>&1)"; then
+    fail "git committed with a guessed identity"
+  fi
+  assert_contains "$output" "auto-detection is disabled"
+}
+
+## ---------- git_identity_setup ---------- ##
+
+test_git_identity_setup_says_how_to_set_a_missing_identity_in_ci() {
+  local output
+  output="$(CI=1 git_identity_setup)"
+
+  assert_contains "$output" "Warning: git does not know your name or email yet."
+  assert_contains "$output" 'git config --global user.name "Your Name"'
+  assert_contains "$output" 'git config --global user.email "you@example.com"'
+  assert_missing "$HOME/.gitconfig"
+}
+
+test_git_identity_setup_names_only_the_missing_part() {
+  git config --global user.name "Someone"
+  local output
+  output="$(CI=1 git_identity_setup)"
+
+  assert_contains "$output" "does not know your email yet"
+  assert_not_contains "$output" "user.name"
+}
+
+test_git_identity_setup_is_quiet_when_the_identity_is_set() {
+  git config --global user.name "Someone"
+  git config --global user.email "someone@example.com"
+
+  # Not CI, so any prompt would read stdin: there must be none to answer.
+  assert_eq "" "$(CI="" git_identity_setup </dev/null)"
+}
+
+test_git_identity_setup_follows_includes() {
+  # An identity kept in a file ~/.gitconfig includes still counts.
+  printf '[user]\n\tname = Someone\n\temail = someone@example.com\n' >"$HOME/.gitconfig-identity"
+  git config --global --add include.path "$HOME/.gitconfig-identity"
+
+  assert_eq "" "$(CI=1 git_identity_setup)"
+}
+
+test_git_identity_setup_counts_an_identity_in_the_system_config() {
+  printf '[user]\n\tname = Someone\n\temail = someone@example.com\n' >"$TEST_TMP/system"
+
+  # The framework points the system config at /dev/null; point it here instead.
+  assert_eq "" "$(GIT_CONFIG_SYSTEM="$TEST_TMP/system" CI=1 git_identity_setup)"
+}
+
+test_git_identity_setup_ignores_an_identity_scoped_to_the_current_repo() {
+  # An includeIf identity applies only inside its repositories, so running
+  # install.sh from one of them must not hide that it is missing elsewhere.
+  # gitdir: matches the resolved path; $TEST_TMP can hold a // from $TMPDIR.
+  local work
+  work="$(cd "$TEST_TMP" && pwd -P)/work"
+  printf '[user]\n\tname = Someone\n\temail = someone@example.com\n' >"$HOME/.gitconfig-work"
+  git config --global "includeIf.gitdir:$work/.path" "$HOME/.gitconfig-work"
+  git init -q "$work"
+  cd "$work" || fail "could not enter $work"
+  # Prove the identity is in effect here, or the assertion below proves nothing.
+  assert_eq "Someone" "$(git config --get user.name)"
+
+  assert_contains "$(CI=1 git_identity_setup)" "your git name and email are only set by includeIf blocks"
+}
+
+test_git_identity_setup_ignores_a_repository_in_home() {
+  # Dotfiles kept in a repository at ~ give that one repository an identity,
+  # not every repository.
+  git init -q "$HOME"
+  git -C "$HOME" config user.name "Someone"
+  git -C "$HOME" config user.email "someone@example.com"
+
+  assert_contains "$(CI=1 git_identity_setup)" "does not know your name or email"
+}
+
+test_git_identity_setup_counts_an_identity_in_the_environment() {
+  # git takes these even with useConfigOnly, e.g. exported from ~/.zshrc.local.
+  assert_eq "" "$(
+    export GIT_AUTHOR_NAME=Someone GIT_COMMITTER_NAME=Someone
+    export GIT_AUTHOR_EMAIL=someone@example.com GIT_COMMITTER_EMAIL=someone@example.com
+    CI=1 git_identity_setup
+  )"
+}
+
+test_git_identity_setup_needs_both_author_and_committer_in_the_environment() {
+  # A commit needs both, so an author alone is no identity.
+  local output
+  output="$(GIT_AUTHOR_NAME=Someone GIT_AUTHOR_EMAIL=someone@example.com CI=1 git_identity_setup)"
+
+  assert_contains "$output" "does not know your name or email"
+}
+
+test_git_identity_setup_leaves_an_includeif_identity_alone() {
+  local work output
+  work="$(cd "$TEST_TMP" && pwd -P)/work"
+  printf '[user]\n\temail = work@example.com\n' >"$HOME/.gitconfig-work"
+  # Written with ~/ as people do; git and install.sh expand it.
+  git config --global "includeIf.gitdir:$work/.path" \~/.gitconfig-work
+  git init -q "$work"
+
+  # Only the name is asked for: a global email would land after the includeIf
+  # block and override it inside $work.
+  output="$(CI="" git_identity_setup <<<"Some One" 2>&1)"
+
+  assert_eq "Some One" "$(git config --global --get user.name)"
+  assert_eq "" "$(git config --global --no-includes --get user.email || true)"
+  assert_eq "work@example.com" "$(git -C "$work" config --get user.email)"
+  assert_contains "$output" "your git email is only set by includeIf blocks"
+  assert_not_contains "$output" "user.email (blank to skip)"
+}
+
+test_git_identity_setup_leaves_an_includeif_identity_alone_in_a_directory_with_spaces() {
+  # git keeps the condition verbatim in the key, so the space is in the key
+  # `git config --get-regexp` prints, not only in the value.
+  local work output
+  work="$(cd "$TEST_TMP" && pwd -P)/Client Work"
+  printf '[user]\n\temail = work@example.com\n' >"$HOME/.gitconfig client"
+  git config --global "includeIf.gitdir:$work/.path" "$HOME/.gitconfig client"
+  git init -q "$work"
+  assert_eq "work@example.com" "$(git -C "$work" config --get user.email)"
+
+  output="$(CI="" git_identity_setup <<<"Some One" 2>&1)"
+
+  assert_eq "" "$(git config --global --no-includes --get user.email || true)"
+  assert_eq "work@example.com" "$(git -C "$work" config --get user.email)"
+  assert_contains "$output" "your git email is only set by includeIf blocks"
+}
+
+test_git_identity_setup_finds_an_includeif_block_in_an_included_file() {
+  # e.g. a machine-local ~/.gitconfig.local holding the work/personal split.
+  local work
+  work="$(cd "$TEST_TMP" && pwd -P)/work"
+  printf '[user]\n\temail = work@example.com\n' >"$HOME/.gitconfig-work"
+  git config --file "$HOME/.gitconfig.local" "includeIf.gitdir:$work/.path" "$HOME/.gitconfig-work"
+  git config --global --add include.path "$HOME/.gitconfig.local"
+
+  assert_contains "$(CI=1 git_identity_setup)" "your git email is only set by includeIf blocks"
+}
+
+test_git_identity_setup_finds_an_identity_an_includeif_target_includes() {
+  local work
+  work="$(cd "$TEST_TMP" && pwd -P)/work"
+  printf '[user]\n\temail = work@example.com\n' >"$HOME/.gitconfig-work-identity"
+  git config --file "$HOME/.gitconfig-work" include.path "$HOME/.gitconfig-work-identity"
+  git config --global "includeIf.gitdir:$work/.path" "$HOME/.gitconfig-work"
+
+  assert_contains "$(CI=1 git_identity_setup)" "your git email is only set by includeIf blocks"
+}
+
+test_git_identity_setup_shows_its_prompt_when_stdin_is_not_a_terminal() {
+  # read -p would print nothing here, as over `ssh host ./install.sh`.
+  local prompt
+  prompt="$(CI="" git_identity_setup <<<"$(printf 'Some One\nsomeone@example.com\n')" 2>&1 >/dev/null)"
+
+  assert_contains "$prompt" "Your git user.name (blank to skip):"
+  assert_contains "$prompt" "Your git user.email (blank to skip):"
+}
+
+test_git_identity_setup_asks_for_and_saves_a_missing_identity() {
+  local output
+  output="$(CI="" git_identity_setup <<<"$(printf 'Some One\nsomeone@example.com\n')")"
+
+  assert_eq "Some One" "$(git config --global --get user.name)"
+  assert_eq "someone@example.com" "$(git config --global --get user.email)"
+  assert_not_contains "$output" "Warning:"
+}
+
+test_git_identity_setup_asks_only_for_the_missing_part() {
+  git config --global user.name "Someone"
+  CI="" git_identity_setup <<<"someone@example.com" >/dev/null
+
+  assert_eq "Someone" "$(git config --global --get user.name)"
+  assert_eq "someone@example.com" "$(git config --global --get user.email)"
+}
+
+test_git_identity_setup_warns_about_what_was_left_blank() {
+  local output
+  output="$(CI="" git_identity_setup <<<"$(printf 'Some One\n\n')")"
+
+  assert_eq "Some One" "$(git config --global --get user.name)"
+  assert_eq "" "$(git config --global --get user.email || true)"
+  assert_contains "$output" "does not know your email yet"
+}
+
+test_git_identity_setup_stops_at_end_of_input() {
+  local output
+  output="$(CI="" git_identity_setup </dev/null)"
+
+  assert_contains "$output" "does not know your name or email"
+  assert_missing "$HOME/.gitconfig"
+}
+
+test_dry_run_does_not_ask_for_or_write_an_identity() {
+  DRY_RUN=1
+  local output
+  output="$(CI="" git_identity_setup <<<"$(printf 'Some One\nsomeone@example.com\n')")"
+
+  assert_contains "$output" "does not know your name or email"
+  assert_missing "$HOME/.gitconfig"
 }
 
 ## ---------- set_login_shell ---------- ##
@@ -532,6 +745,35 @@ test_source_profile_repoints_a_stale_link() {
   assert_symlink "$HOME/scripts" "$REPO_ROOT/scripts"
   assert_symlink "$HOME/.zshrc" "$REPO_ROOT/.zshrc"
   assert_eq "" "$(home_backups)" "a stale link was backed up instead of repointed"
+}
+
+test_source_profile_repoints_a_link_into_an_older_checkout_that_still_exists() {
+  mkdir -p "$TEST_TMP/old-checkout"
+  touch "$TEST_TMP/old-checkout/install.sh" "$TEST_TMP/old-checkout/.zshrc"
+  ln -sfn "$TEST_TMP/old-checkout/.zshrc" "$HOME/.zshrc"
+  source_profile zshrc >/dev/null
+
+  assert_symlink "$HOME/.zshrc" "$REPO_ROOT/.zshrc"
+  assert_eq "" "$(home_backups)" "an older checkout's link was backed up"
+}
+
+test_source_profile_backs_up_a_symlink_of_the_users_own() {
+  # e.g. a profile synced through Dropbox: the link is the user's, not ours.
+  mkdir -p "$TEST_TMP/Dropbox"
+  echo "# mine" >"$TEST_TMP/Dropbox/.zshrc"
+  ln -s "$TEST_TMP/Dropbox/.zshrc" "$HOME/.zshrc"
+  source_profile zshrc >/dev/null
+
+  assert_symlink "$HOME/.zshrc" "$REPO_ROOT/.zshrc"
+  assert_symlink "$(echo "$HOME"/.zshrc.backup-*)" "$TEST_TMP/Dropbox/.zshrc"
+}
+
+test_source_profile_backs_up_a_broken_symlink_of_the_users_own() {
+  ln -s "$TEST_TMP/gone/my-profile" "$HOME/.zshrc"
+  source_profile zshrc >/dev/null
+
+  assert_symlink "$HOME/.zshrc" "$REPO_ROOT/.zshrc"
+  assert_contains "$(home_backups)" ".zshrc.backup-"
 }
 
 test_source_profile_backs_up_a_real_zshrc() {

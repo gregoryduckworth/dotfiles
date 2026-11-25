@@ -2,6 +2,11 @@
 # credential helpers and anything machine-specific stay in ~/.gitconfig, where
 # `git config --global` and tools like `gh auth setup-git` write them.
 
+[user]
+	# Refuse to commit until user.name and user.email are set, rather than
+	# guessing an address like you@hostname.local from the machine.
+	useConfigOnly = true
+
 [init]
 	defaultBranch = main
 

@@ -132,6 +132,14 @@ _run_one() (
   # Either would point `git config --global` at the real machine's config
   # instead of the sandbox $HOME/.gitconfig.
   unset GIT_CONFIG_GLOBAL XDG_CONFIG_HOME
+  # The system config (/etc/gitconfig, or Homebrew git's etc/gitconfig) and
+  # config passed in the environment would bring the machine's settings, an
+  # identity among them, into every git the tests run. NOSYSTEM covers plain
+  # reads; `git config --system` ignores it, so the file is pointed away too.
+  unset GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
+  export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_SYSTEM=/dev/null
+  # An identity in these would let a commit through whatever the config says.
+  unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
 
   cd "$REPO_ROOT"
   "$1"
